@@ -78,3 +78,24 @@ class De10Config extends Config((site, here, up) => {
       vmeParams = VMEParams()
     )
 })
+
+/** VTAConfig. Shell configuration for the VTAShell */
+class VTAConfig extends Config((site, here, up) => {
+  case ShellKey =>
+    ShellParams(
+      hostParams = AXIParams(coherent = false,
+        addrBits = 16,
+        dataBits = 32,
+        lenBits = 8,
+        userBits = 1),
+      memParams = AXIParams(coherent = false,
+        addrBits = 64,
+        dataBits = 64,
+        lenBits = 8,
+        userBits = 1),
+      vcrParams = VCRParams(),
+      vmeParams = VMEParams()
+    )
+})
+
+
