@@ -86,7 +86,7 @@ int cma_free(void *mem);
  *
  * \return Returns address on SUCCESS, 0 on FAILURE.
  */
-unsigned cma_get_phy_addr(void *mem);
+uintptr_t cma_get_phy_addr(void *mem);
 
 
 #ifdef __cplusplus
