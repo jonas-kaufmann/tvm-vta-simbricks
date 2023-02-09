@@ -24,27 +24,62 @@
 #include <thread>
 #include <iostream>
 #include <time.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <sys/mman.h>
 #include "pci_driver.h"
 #include "vfio.h"
-
-#include <cma/cma_api_impl.h>
 
 static void *reg_bar = nullptr;
 static int vfio_fd = -1;
 
+static void *alloc_base = nullptr;
+static uint64_t alloc_phys_base = 5ULL * 1024 * 1024 * 1024;
+static size_t alloc_size = 1ULL * 1024 * 1024 * 1024;
+static size_t alloc_off = 0;
+
+static void alloc_init()
+{
+  if (alloc_base)
+    return;
+
+  std::cerr << "simbricks-pci: initializing allocator" << std::endl;
+  int fd = open("/dev/mem", O_RDWR | O_SYNC);
+  if (fd < 0) {
+    std::cerr << "opening devmem failed" << std::endl;
+    abort();
+  }
+
+  void *mem = mmap(NULL, alloc_size, PROT_READ | PROT_WRITE, MAP_SHARED,
+			fd, alloc_phys_base);
+  if (mem == MAP_FAILED) {
+    std::cerr << "mmap devmem failed" << std::endl;
+    abort();
+  }
+  alloc_base = mem;
+
+  std::cerr << "simbricks-pci: allocator initialized" << std::endl;
+}
+
 void* VTAMemAlloc(size_t size, int cached) {
-  assert(size <= VTA_MAX_XFER);
-  static int _ = cma_init(); (void)_;
-  return cma_alloc(size, cached);
+  std::cerr << "simbricks-pci: VTAMemAlloc(" << size << ")" << std::endl;
+  alloc_init();
+
+  assert (alloc_off + size <= alloc_size);
+  void *addr = (void *) ((uint8_t *) alloc_base + alloc_off);
+  alloc_off += size;
+  std::cerr << "simbricks-pci:    = " << addr << std::endl;
+  return addr;
 }
 
 void VTAMemFree(void* buf) {
-  // Rely on the pynq-specific cma library
-  cma_free(buf);
+  std::cerr << "simbricks-pci: VTAMemFree(" << buf << ")" << std::endl;
+  // TODO
 }
 
 vta_phy_addr_t VTAMemGetPhyAddr(void* buf) {
-  return cma_get_phy_addr(buf);
+  return alloc_phys_base + (buf - alloc_base);
 }
 
 void VTAMemCopyFromHost(void* dst, const void* src, size_t size) {
