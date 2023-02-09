@@ -28,6 +28,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/mman.h>
+#include <string.h>
+#include <stdlib.h>
 #include "pci_driver.h"
 #include "vfio.h"
 
@@ -79,7 +81,7 @@ void VTAMemFree(void* buf) {
 }
 
 vta_phy_addr_t VTAMemGetPhyAddr(void* buf) {
-  return alloc_phys_base + (buf - alloc_base);
+  return alloc_phys_base + ((uintptr_t) buf - (uintptr_t) alloc_base);
 }
 
 void VTAMemCopyFromHost(void* dst, const void* src, size_t size) {
