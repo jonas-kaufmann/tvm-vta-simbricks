@@ -100,7 +100,12 @@ class PkgConfig(object):
                 "-I%s/src/de10nano" % vta_hw_path,
                 "-I%s/3rdparty" % tvm_path
             ]
-
+        elif self.TARGET in ["simbricks-pci"]:
+            self.lib_source += glob.glob("%s/src/simbricks-pci/*.cc" % vta_hw_path)
+            self.include_path += [
+                "-I%s/src/simbricks-pci" % vta_hw_path,
+                "-I%s/3rdparty" % tvm_path
+            ]
         # Linker flags
         if self.TARGET in ["pynq", "ultra96", "zcu104"]:
             self.ldflags = [
@@ -179,6 +184,21 @@ class PkgConfig(object):
             self.load_base_addr = "0xA0001000"
             self.compute_base_addr = "0xA0002000"
             self.store_base_addr = "0xA0003000"
+        elif self.TARGET == "simbricks-pci":
+            self.fpga_device = "simbricks-pci"
+            self.fpga_family = "simbricks-pci"
+            self.fpga_board = "simbricks-pci"
+            self.fpga_board_rev = "0.1"
+            self.fpga_freq = 333
+            self.fpga_per = 2
+            self.fpga_log_axi_bus_width = 6
+            self.axi_prot_bits = '000'
+            # IP register address map
+            self.ip_reg_map_range = "0x1000"
+            self.fetch_base_addr = "0x0000"
+            self.load_base_addr = "0x1000"
+            self.compute_base_addr = "0x2000"
+            self.store_base_addr = "0x3000"
         else:
             # By default, we use the pynq parameters
             self.fpga_device = "xc7z020clg484-1"
