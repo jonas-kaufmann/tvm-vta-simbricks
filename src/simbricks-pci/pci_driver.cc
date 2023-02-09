@@ -34,7 +34,7 @@ static int vfio_fd = -1;
 
 void* VTAMemAlloc(size_t size, int cached) {
   assert(size <= VTA_MAX_XFER);
-  // Rely on the pynq-specific cma library
+  static int _ = cma_init(); (void)_;
   return cma_alloc(size, cached);
 }
 
