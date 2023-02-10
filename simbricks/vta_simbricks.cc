@@ -173,17 +173,13 @@ static void mmio_done(MMIOOp *op);
 
 class MMIOInterface {
  protected:
-  enum OpState {
-    AddrIssued,
-    AddrAcked,
-    AddrDone,
-  };
 
   VVTAShell &top;
   std::deque<MMIOOp *> queue;
   MMIOOp *rCur, *wCur;
-  enum OpState rState, wState;
 
+  bool rAAck, rDAck;
+  bool wAAck, wDAck, wBAck;
  public:
   MMIOInterface(VVTAShell &top_)
       : top(top_), rCur(0), wCur(0) {
@@ -192,74 +188,111 @@ class MMIOInterface {
   void step() {
     if (rCur) {
       /* work on active read operation */
-
-      if (rState == AddrIssued && top.io_host_ar_ready) {
-        /* read handshake is complete */
-        top.io_host_ar_valid = 0;
-        rState = AddrAcked;
-      }
-      if (rState == AddrAcked && top.io_host_r_valid) {
-        /* read data received */
-        top.io_host_r_ready = 0;
-        rCur->value = top.io_host_r_bits_data;
-        mmio_done(rCur);
+      if (rDAck) {
+        /* read fully completed */
 #ifdef MMIO_DEBUG
         std::cout << main_time << " MMIO: completed AXI read op=" << rCur
                   << " val=" << rCur->value << std::endl;
+        //report_outputs(&top);
 #endif
+        top.io_host_r_ready = 0;
+        mmio_done(rCur);
         rCur = 0;
+      } else if (top.io_host_r_valid) {
+        assert(rAAck);
+        rCur->value = top.io_host_r_bits_data;
+        rDAck = true; // need to delay with ready high for a full cycle for
+                      // chisel code to fully register
+      }
+
+      if (top.io_host_ar_valid && (top.io_host_ar_ready || rAAck)) {
+        /* read addr handshake is complete */
+#ifdef MMIO_DEBUG
+        std::cout << main_time << " MMIO: AXI read addr handshake done op="
+                  << rCur << std::endl;
+        //report_outputs(&top);
+#endif
+        top.io_host_ar_valid = 0;
+        rAAck = true;
       }
     } else if (wCur) {
       /* work on active write operation */
 
-      if (wState == AddrIssued && top.io_host_aw_ready) {
-        /* write addr handshake is complete */
-        top.io_host_aw_valid = 0;
-        wState = AddrAcked;
-      }
-      if (wState == AddrAcked && top.io_host_w_ready) {
-        /* write data handshake is complete */
-        top.io_host_w_valid = 0;
-        top.io_host_b_ready = 1;
-        wState = AddrDone;
-      }
-      if (wState == AddrDone && top.io_host_b_valid) {
-        /* write complete */
-        top.io_host_b_ready = 0;
-        // TODO(antoinek): check top.io_host_b_resp
+      if (wBAck) {
+        /* write fully completed */
 #ifdef MMIO_DEBUG
-        std::cout << main_time << " MMIO: completed AXI write op=" << wCur
+        std::cout << main_time << " MMIO: completed AXI wriste op=" << wCur
                   << std::endl;
+        //report_outputs(&top);
 #endif
+        top.io_host_b_ready = 0;
         mmio_done(wCur);
         wCur = 0;
+      } else if (top.io_host_b_valid) {
+        assert(wAAck && wDAck);
+        wBAck = true; // need to delay with ready high for a full cycle for
+                      // chisel code to fully register
       }
+
+      if (top.io_host_w_valid && (top.io_host_w_ready || wDAck)) {
+        /* write data handshake is complete */
+#ifdef MMIO_DEBUG
+        std::cout << main_time << " MMIO: AXI write data handshake done op="
+                  << wCur << std::endl;
+        //report_outputs(&top);
+#endif
+        top.io_host_w_valid = 0;
+        wDAck = true;
+      }
+
+
+      if (top.io_host_aw_valid && (top.io_host_aw_ready || wAAck)) {
+        /* write addr handshake is complete */
+#ifdef MMIO_DEBUG
+        std::cout << main_time << " MMIO: AXI write addr handshake done op="
+                  << wCur << std::endl;
+        //report_outputs(&top);
+#endif
+        top.io_host_aw_valid = 0;
+        wAAck = true;
+
+        wDAck = top.io_host_w_ready;
+        top.io_host_w_valid = 1;
+      }
+
     } else if (/*!top.clk &&*/ !queue.empty()) {
       /* issue new operation */
-
       MMIOOp *op = queue.front();
+#ifdef MMIO_DEBUG
+        std::cout << main_time << " MMIO: issuing new op on axi op=" << op
+                  << std::endl;
+        //report_outputs(&top);
+#endif
       queue.pop_front();
       if (!op->isWrite) {
         /* issue new read */
         rCur = op;
 
-        rState = AddrIssued;
-
         top.io_host_ar_bits_addr = rCur->addr;
+        rAAck = top.io_host_ar_ready;
         top.io_host_ar_valid = 1;
+        rDAck = false;
         top.io_host_r_ready = 1;
       } else {
         /* issue new write */
         wCur = op;
 
-        wState = AddrIssued;
-
         top.io_host_aw_bits_addr = wCur->addr;
+        wAAck = top.io_host_aw_ready;
         top.io_host_aw_valid = 1;
 
         top.io_host_w_bits_data = wCur->value;
         top.io_host_w_bits_strb = 0xf;
-        top.io_host_w_valid = 1;
+        wDAck = false;
+        top.io_host_w_valid = 0;
+
+        wBAck = false;
+        top.io_host_b_ready = 1;
       }
     }
   }
