@@ -27,6 +27,7 @@ $(verilator_src): $(vsrcs)
 
 $(bin_vta): $(srcs) $(vsrcs) $(verilator_src)
 	$(MAKE) -C $(verilator_dir) -f VVTAShell.mk
+	cp $(verilator_dir)/VVTAShell $@
 
 $(vsrcs):
 	$(MAKE) -C ../hardware/chisel/ verilog CONFIG=DefaultVTAConfig
