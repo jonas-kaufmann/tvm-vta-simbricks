@@ -710,9 +710,11 @@ int main(int argc, char *argv[]) {
     top->clock = !top->clock;
     main_time += clock_period / 2;
     top->eval();
+#ifdef TRACE_ENABLED
+    trace->dump(main_time);
+#endif
 
     mmio.step();
-
     mem_control_writer.step();
     mem_control_reader.step();
 
@@ -721,6 +723,9 @@ int main(int argc, char *argv[]) {
     main_time += clock_period / 2;
 
     top->eval();
+#ifdef TRACE_ENABLED
+    trace->dump(main_time);
+#endif
   }
   report_outputs(top);
   std::cout << std::endl << std::endl << "main_time:" << main_time << std::endl;
