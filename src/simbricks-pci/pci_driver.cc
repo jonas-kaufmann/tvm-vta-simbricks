@@ -142,46 +142,30 @@ class VTADevice {
  public:
   VTADevice() {
     // VTA stage handles
-    vta_fetch_handle_ = VTAMapRegister(VTA_FETCH_ADDR);
-    vta_load_handle_ = VTAMapRegister(VTA_LOAD_ADDR);
-    vta_compute_handle_ = VTAMapRegister(VTA_COMPUTE_ADDR);
-    vta_store_handle_ = VTAMapRegister(VTA_STORE_ADDR);
+    vta_host_handle_ = VTAMapRegister(0);
   }
 
   ~VTADevice() {
     // Close VTA stage handle
-    VTAUnmapRegister(vta_fetch_handle_);
-    VTAUnmapRegister(vta_load_handle_);
-    VTAUnmapRegister(vta_compute_handle_);
-    VTAUnmapRegister(vta_store_handle_);
+    VTAUnmapRegister(vta_host_handle_);
   }
 
   int Run(vta_phy_addr_t insn_phy_addr,
           uint32_t insn_count,
           uint32_t wait_cycles) {
-    VTAWriteMappedReg(vta_fetch_handle_, VTA_FETCH_INSN_COUNT_OFFSET, insn_count);
-    VTAWriteMappedReg(vta_fetch_handle_, VTA_FETCH_INSN_ADDR_OFFSET, insn_phy_addr);
-    VTAWriteMappedReg(vta_load_handle_, VTA_LOAD_INP_ADDR_OFFSET, 0);
-    VTAWriteMappedReg(vta_load_handle_, VTA_LOAD_WGT_ADDR_OFFSET, 0);
-    VTAWriteMappedReg(vta_compute_handle_, VTA_COMPUTE_UOP_ADDR_OFFSET, 0);
-    VTAWriteMappedReg(vta_compute_handle_, VTA_COMPUTE_BIAS_ADDR_OFFSET, 0);
-    VTAWriteMappedReg(vta_store_handle_, VTA_STORE_OUT_ADDR_OFFSET, 0);
+    VTAWriteMappedReg(vta_host_handle_, 0x04, 0);
+    VTAWriteMappedReg(vta_host_handle_, 0x08, insn_count);
+    VTAWriteMappedReg(vta_host_handle_, 0x0c, insn_phy_addr);
 
     // VTA start
-    VTAWriteMappedReg(vta_fetch_handle_, 0x0, VTA_START);
-    VTAWriteMappedReg(vta_load_handle_, 0x0, VTA_AUTORESTART);
-    VTAWriteMappedReg(vta_compute_handle_, 0x0, VTA_AUTORESTART);
-    VTAWriteMappedReg(vta_store_handle_, 0x0, VTA_AUTORESTART);
-
-    // Allow device to respond
-    struct timespec ts = { .tv_sec = 0, .tv_nsec = 1000 };
-    nanosleep(&ts, &ts);
+    VTAWriteMappedReg(vta_host_handle_, 0x0, VTA_START);
 
     // Loop until the VTA is done
     unsigned t, flag = 0;
     for (t = 0; t < wait_cycles; ++t) {
-      flag = VTAReadMappedReg(vta_compute_handle_, VTA_COMPUTE_DONE_RD_OFFSET);
-      if (flag == VTA_DONE) break;
+      flag = VTAReadMappedReg(vta_host_handle_, 0x00);
+      flag &= 0x2;
+      if (flag == 0x2) break;
       std::this_thread::yield();
     }
     // Report error if timeout
@@ -190,10 +174,7 @@ class VTADevice {
 
  private:
   // VTA handles (register maps)
-  void* vta_fetch_handle_{nullptr};
-  void* vta_load_handle_{nullptr};
-  void* vta_compute_handle_{nullptr};
-  void* vta_store_handle_{nullptr};
+  void* vta_host_handle_{nullptr};
 };
 
 VTADeviceHandle VTADeviceAlloc() {
