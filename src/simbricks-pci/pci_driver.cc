@@ -161,6 +161,16 @@ class VTADevice {
     // VTA start
     VTAWriteMappedReg(vta_host_handle_, 0x0, VTA_START);
 
+    std::cerr << "inst:" << std::endl;
+    for (uint32_t i = 0; i < insn_count; i++) {
+      std::cerr << "    " << std::endl;
+      for (uint32_t j = 0; j < 16; j++) {
+        std::cerr << (uint32_t) *((uint8_t *) alloc_base + (insn_phy_addr - alloc_phys_base) + (i * 16) + (j)) << " ";
+      }
+      std::cerr << std::endl;
+    }
+    std::cerr << std::endl;
+
     // Loop until the VTA is done
     unsigned t, flag = 0;
     for (t = 0; t < wait_cycles; ++t) {
