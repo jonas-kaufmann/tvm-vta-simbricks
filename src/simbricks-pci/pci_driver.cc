@@ -38,7 +38,7 @@ static int vfio_fd = -1;
 
 static void *alloc_base = nullptr;
 static uint64_t alloc_phys_base = 1ULL * 1024 * 1024 * 1024;
-static size_t alloc_size = 1ULL * 1024 * 1024 * 1024;
+static size_t alloc_size = 512 * 1024 * 1024;
 static size_t alloc_off = 0;
 
 static void alloc_init()
