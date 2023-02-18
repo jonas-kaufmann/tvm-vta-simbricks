@@ -156,6 +156,7 @@ class VTADevice {
     VTAWriteMappedReg(vta_host_handle_, 0x04, 0);
     VTAWriteMappedReg(vta_host_handle_, 0x08, insn_count);
     VTAWriteMappedReg(vta_host_handle_, 0x0c, insn_phy_addr);
+    VTAWriteMappedReg(vta_host_handle_, 0x10, insn_phy_addr >> 32);
 
     // VTA start
     VTAWriteMappedReg(vta_host_handle_, 0x0, VTA_START);
