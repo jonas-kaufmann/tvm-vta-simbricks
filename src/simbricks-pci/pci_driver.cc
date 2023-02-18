@@ -37,7 +37,7 @@ static void *reg_bar = nullptr;
 static int vfio_fd = -1;
 
 static void *alloc_base = nullptr;
-static uint64_t alloc_phys_base = 5ULL * 1024 * 1024 * 1024;
+static uint64_t alloc_phys_base = 1ULL * 1024 * 1024 * 1024;
 static size_t alloc_size = 1ULL * 1024 * 1024 * 1024;
 static size_t alloc_off = 0;
 
