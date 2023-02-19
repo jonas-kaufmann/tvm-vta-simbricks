@@ -119,6 +119,11 @@ void *VTAMapRegister(uint32_t addr) {
       abort();
     }
 
+    if (vfio_busmaster_enable(vfio_fd)) {
+      std::cerr << "vfio busmaster enable failed" << std::endl;
+      abort();
+    }
+
     std::cerr << "vfio registers mapped (len = " << reg_len << ")" << std::endl;
   }
 
