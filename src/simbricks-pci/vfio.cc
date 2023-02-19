@@ -139,7 +139,7 @@ int vfio_get_region_info(int dev, int i, struct vfio_region_info *reg)
 
 int vfio_busmaster_enable(int dev)
 {
-  struct vfio_region_info reg;
+  struct vfio_region_info reg = { .argsz = sizeof(reg) };
   if (vfio_get_region_info(dev, VFIO_PCI_CONFIG_REGION_INDEX, &reg)) {
     fprintf(stderr, "vfio_busmaster_enable: failed to get config region.\n");
     return -1;
@@ -152,7 +152,7 @@ int vfio_busmaster_enable(int dev)
     return -1;
   }
   cmd_reg |= 0x4;  // set bus enable
-  if (pwrite(dev, &cmd_reg, sizeof(cmd_reg). reg.offset + 0x04) !=
+  if (pwrite(dev, &cmd_reg, sizeof(cmd_reg), reg.offset + 0x04) !=
       sizeof(cmd_reg)) {
     fprintf(stderr, "vfio_busmaster_enable: failed to write cmd reg.\n");
     return -1;
