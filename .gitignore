@@ -239,3 +239,4 @@ tvm/
 simbricks/obj_dir/
 simbricks/vta_simbricks
 hardware/chisel/project/project/
+ready
