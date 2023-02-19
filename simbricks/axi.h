@@ -23,6 +23,7 @@
  */
 
 #include <deque>
+#include <map>
 
 #include <verilated.h>
 
@@ -127,9 +128,10 @@ class AXIReadOp {
   size_t len;
   uint64_t id;
   uint8_t *buf;
+  size_t off;
 
   AXIReadOp(uint64_t addr_, size_t len_, uint64_t id_)
-    : addr(addr_), len(len_), id(id_), buf(new uint8_t[len_])
+    : addr(addr_), len(len_), id(id_), buf(new uint8_t[len_]), off(0)
   {
   }
 
@@ -160,9 +162,15 @@ class AXIWriter {
     AXIChannelWriteData &dataP;
     AXIChannelWriteResp &respP;
 
-    virtual void do_write(uint64_t addr, const void *buf, size_t len);
+    std::map<uint64_t, AXIReadOp *> pending;
+    std::deque<AXIReadOp *> completed;
+    AXIReadOp *complOp;
+    bool complWasReady;
+
+    virtual void doWrite(AXIReadOp *op) = 0;
   public:
     AXIWriter(AXIChannelWriteAddr &addrP_, AXIChannelWriteData &dataP_,
         AXIChannelWriteResp &respP_);
+    void writeDone(AXIReadOp *op);
     void step();
 };

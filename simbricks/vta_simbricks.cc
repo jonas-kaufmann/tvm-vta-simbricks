@@ -25,6 +25,8 @@
 #include <signal.h>
 #include <verilated.h>
 
+//#define TRACE_ENABLED
+
 #include <deque>
 #include <iostream>
 #include <set>
@@ -58,7 +60,10 @@ static void *dev_mem;
 static VerilatedVcdC *trace;
 #endif
 
+VVTAShell *shell;
+
 static volatile union SimbricksProtoPcieD2H *d2h_alloc(void);
+static void report_outputs(VVTAShell *top);
 
 static void sigint_handler(int dummy) {
   exiting = 1;
@@ -66,6 +71,7 @@ static void sigint_handler(int dummy) {
 
 static void sigusr1_handler(int dummy) {
   fprintf(stderr, "main_time = %lu\n", main_time);
+  report_outputs(shell);
 }
 
 double sc_time_stamp() {
@@ -415,6 +421,7 @@ class MemWriter : public AXIWriter {
 
   static AXIChannelWriteData *dataPort(VVTAShell &top) {
     AXIChannelWriteData *cwd = new AXIChannelWriteData;
+    cwd->data_bits = 64;
     cwd->id_bits = 8;
     cwd->user_bits = 1;
 
@@ -442,12 +449,20 @@ class MemWriter : public AXIWriter {
     return cwr;
   }
 
-  virtual void do_write(uint64_t addr, const void *buf, size_t len) override {
-    if (addr + len > dev_mem_size) {
-      throw "mem address out of range";
-    }
+  virtual void doWrite(AXIReadOp *op) override {
+    volatile union SimbricksProtoPcieD2H *msg = d2h_alloc();
+    if (!msg)
+      throw "dma read alloc failed";
 
-    memcpy((uint8_t *) dev_mem + addr, buf, len);
+    volatile struct SimbricksProtoPcieD2HWrite *write = &msg->write;
+    write->req_id = (uintptr_t)op;
+    write->offset = op->addr;
+    write->len = op->len;
+    memcpy((void *)write->data, op->buf, op->len);
+    SimbricksPcieIfD2HOutSend(&nicif.pcie, msg,
+                              SIMBRICKS_PROTO_PCIE_D2H_MSG_WRITE);
+
+    writeDone(op);
   }
  public:
   MemWriter(VVTAShell &top)
@@ -517,14 +532,6 @@ void pci_dma_issue(DMAOp *op) {
   pci_dma_pending.insert(op);
 }
 
-static void h2d_writecomp(volatile struct SimbricksProtoPcieH2DWritecomp *wc) {
-  DMAOp *op = (DMAOp *)(uintptr_t)wc->req_id;
-  if (pci_dma_pending.find(op) == pci_dma_pending.end())
-    throw "unexpected completion";
-  pci_dma_pending.erase(op);
-
-  op->engine->pci_op_complete(op);
-}
 #endif
 
 static void h2d_read(MMIOInterface &mmio,
@@ -586,6 +593,9 @@ static void h2d_readcomp(volatile struct SimbricksProtoPcieH2DReadcomp *rc) {
   mem_control_reader->readDone(op);
 }
 
+static void h2d_writecomp(volatile struct SimbricksProtoPcieH2DWritecomp *wc) {
+  //std::cout << "dma write completed" << std::endl;
+}
 
 static void poll_h2d(MMIOInterface &mmio) {
   volatile union SimbricksProtoPcieH2D *msg =
@@ -611,9 +621,9 @@ static void poll_h2d(MMIOInterface &mmio) {
       h2d_readcomp(&msg->readcomp);
       break;
 
-    /*case SIMBRICKS_PROTO_PCIE_H2D_MSG_WRITECOMP:
+    case SIMBRICKS_PROTO_PCIE_H2D_MSG_WRITECOMP:
       h2d_writecomp(&msg->writecomp);
-      break;*/
+      break;
 
     case SIMBRICKS_PROTO_PCIE_H2D_MSG_DEVCTRL:
       break;
@@ -694,6 +704,7 @@ int main(int argc, char *argv[]) {
   dev_mem = new uint8_t[dev_mem_size];
 
   VVTAShell *top = new VVTAShell;
+  shell = top;
 #ifdef TRACE_ENABLED
   trace = new VerilatedVcdC;
   top->trace(trace, 99);

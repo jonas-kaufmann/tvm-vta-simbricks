@@ -62,6 +62,7 @@ void AXIReader::step()
     pending.pop_front();
 #ifdef AXI_DEBUG
     std::cout << main_time << " AXI R: starting response op=" << curOp
+              << " ready=" << (unsigned) *dataP.ready << " id=" << curOp->id
               << std::endl;
 #endif
 
@@ -71,30 +72,33 @@ void AXIReader::step()
 
     curOff += step;
     *dataP.last = (curOff == curOp->len);
-#ifdef AXI_DEBUG
+
     if (*dataP.last) {
-      std::cout << main_time << " AXI R: completed op=" << curOp << std::endl;
+#ifdef AXI_DEBUG
+      std::cout << main_time << " AXI R: completed op=" << curOp << " id="
+                << curOp->id << std::endl;
+  #endif
       delete curOp;
       curOp = nullptr;
     }
-#endif
   } else if (curOp && *dataP.ready) {
 #ifdef AXI_DEBUG
     std::cout << main_time << " AXI R: step op=" << curOp << " off="
-              << curOff << std::endl;
+              << curOff << " id=" << curOp->id << std::endl;
 #endif
     memcpy(dataP.data, curOp->buf + curOff, step);
 
     curOff += step;
     *dataP.last = (curOff == curOp->len);
-#ifdef AXI_DEBUG
     if (*dataP.last) {
-      std::cout << main_time << " AXI R: completed op=" << curOp << std::endl;
+#ifdef AXI_DEBUG
+      std::cout << main_time << " AXI R: completed op=" << curOp << " id="
+                << curOp->id << std::endl;
+#endif
       delete curOp;
       curOp = nullptr;
     }
-#endif
-  } else {
+  } else if (!curOp) {
     *dataP.valid = 0;
   }
 
@@ -114,17 +118,102 @@ void AXIReader::readDone(AXIReadOp *op)
 }
 
 
-void AXIWriter::do_write(uint64_t addr, const void *buf, size_t len)
-{
-}
-
 AXIWriter::AXIWriter(AXIChannelWriteAddr &addrP_, AXIChannelWriteData &dataP_,
     AXIChannelWriteResp &respP_)
-  : addrP(addrP_), dataP(dataP_), respP(respP_)
+  : addrP(addrP_), dataP(dataP_), respP(respP_), complOp(nullptr)
 {
 }
 
 void AXIWriter::step()
 {
-  /* FIXME: TODO */
+  if (complOp && (*respP.ready || complWasReady)) {
+#ifdef AXI_DEBUG
+    std::cout << main_time << " AXI W: complete op=" << complOp << std::endl;
+#endif
+    delete complOp;
+    complOp = nullptr;
+    *respP.valid = 0;
+  }
+
+  if (!complOp && !completed.empty()) {
+    complOp = completed.front();
+    completed.pop_front();
+
+#ifdef AXI_DEBUG
+    std::cout << main_time << " AXI W: issuing completion op=" << complOp
+              << std::endl;
+#endif
+
+    memcpy(respP.id, &complOp->id, (respP.id_bits + 7) / 8);
+    *respP.valid = 1;
+    complWasReady = *respP.ready;
+  }
+
+
+  *addrP.ready = 1;
+  if (*addrP.valid) {
+    uint64_t id = 0;
+    memcpy(&id, addrP.id, (addrP.id_bits + 7) / 8);
+
+    uint64_t addr = 0;
+    memcpy(&addr, addrP.addr, (addrP.addr_bits + 7) / 8);
+
+    AXIReadOp *op = new AXIReadOp(
+        addr, ((uint64_t) *addrP.len + 1) * ((dataP.data_bits + 7) / 8), id);
+#ifdef AXI_DEBUG
+    std::cout << main_time << " AXI W: new op=" << op << " addr="
+              << op->addr << " len=" << op->len << " id=" << op->id
+              << std::endl;
+#endif
+    if (pending.find(id) != pending.end()) {
+      std::cerr << "AXI W id " << id << " is already pending" << std::endl;
+      abort();
+    }
+    pending[id] = op;
+  }
+
+  *dataP.ready = 1;
+  if (*dataP.valid) {
+    uint64_t id = 0;
+    memcpy(&id, dataP.id, (dataP.id_bits + 7) / 8);
+
+    auto it = pending.find(id);
+    if (it == pending.end()) {
+      std::cerr << "AXI W data " << id << " is unknown" << std::endl;
+      abort();
+    }
+
+    AXIReadOp *op = it->second;
+
+#ifdef AXI_DEBUG
+    std::cout << main_time << " AXI W: data id=" << id << " op=" << op
+              << " last=" << (unsigned) *dataP.last << std::endl;
+#endif
+
+    size_t step = (dataP.data_bits + 7) / 8;
+    memcpy(op->buf + op->off, dataP.data, step);
+    op->off += step;
+    if (op->off > op->len) {
+      std::cerr << "AXI W operation too long?" << std::endl;
+      abort();
+    } else if (op->off == op->len) {
+      if (!*dataP.last) {
+        std::cerr << "AXI W operation is done but last is not set?"
+                  << std::endl;
+        abort();
+      }
+
+      pending.erase(it);
+      doWrite(op);
+    }
+  }
+}
+
+void AXIWriter::writeDone(AXIReadOp *op)
+{
+#ifdef AXI_DEBUG
+  std::cout << main_time << " AXI W: completed write for op=" << op
+            << std::endl;
+#endif
+  completed.push_back(op);
 }
