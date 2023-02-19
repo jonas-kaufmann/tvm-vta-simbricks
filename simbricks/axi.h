@@ -22,6 +22,8 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include <deque>
+
 #include <verilated.h>
 
 struct AXIChannelReadAddr {
@@ -119,14 +121,36 @@ struct AXIChannelWriteResp {
     void *user;    // ->
 };
 
+class AXIReadOp {
+ public:
+  uint64_t addr;
+  size_t len;
+  uint64_t id;
+  uint8_t *buf;
+
+  AXIReadOp(uint64_t addr_, size_t len_, uint64_t id_)
+    : addr(addr_), len(len_), id(id_), buf(new uint8_t[len_])
+  {
+  }
+
+  ~AXIReadOp() {
+    delete[] buf;
+  }
+};
+
 class AXIReader {
   protected:
     AXIChannelReadAddr &addrP;
     AXIChannelReadData &dataP;
 
-    virtual void do_read(uint64_t addr, void *buf, size_t len);
+    std::deque<AXIReadOp *> pending;
+    AXIReadOp *curOp;
+    size_t curOff;
+
+    virtual void doRead(AXIReadOp *op) = 0;
   public:
     AXIReader(AXIChannelReadAddr &addrP_, AXIChannelReadData &dataP_);
+    void readDone(AXIReadOp *op);
     void step();
 };
 

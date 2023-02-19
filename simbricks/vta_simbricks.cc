@@ -41,6 +41,7 @@ extern "C" {
 #include "axi.h"
 
 struct DMAOp;
+class MemReader;
 
 static uint64_t clock_period = 10 * 1000ULL;  // 10ns -> 100MHz
 static size_t dev_mem_size = 1024 * 1024 * 1024;
@@ -50,6 +51,7 @@ static bool terminated = false;
 uint64_t main_time = 0;
 static struct SimbricksNicIf nicif;
 
+MemReader *mem_control_reader;
 static void *dev_mem;
 
 #ifdef TRACE_ENABLED
@@ -366,12 +368,18 @@ class MemReader : public AXIReader {
     return crd;
   }
 
-  virtual void do_read(uint64_t addr, void *buf, size_t len) override {
-    if (addr + len > dev_mem_size) {
-      throw "mem address out of range";
-    }
+  virtual void doRead(AXIReadOp *op) override {
+    volatile union SimbricksProtoPcieD2H *msg = d2h_alloc();
+    if (!msg)
+      throw "dma read alloc failed";
 
-    memcpy(buf, (const uint8_t *) dev_mem + addr, len);
+    volatile struct SimbricksProtoPcieD2HRead *read = &msg->read;
+    read->req_id = (uintptr_t)op;
+    read->offset = op->addr;
+    read->len = op->len;
+
+    SimbricksPcieIfD2HOutSend(&nicif.pcie, msg,
+                              SIMBRICKS_PROTO_PCIE_D2H_MSG_READ);
   }
 
  public:
@@ -509,24 +517,6 @@ void pci_dma_issue(DMAOp *op) {
   pci_dma_pending.insert(op);
 }
 
-static void h2d_readcomp(volatile struct SimbricksProtoPcieH2DReadcomp *rc) {
-  DMAOp *op = (DMAOp *)(uintptr_t)rc->req_id;
-  if (pci_dma_pending.find(op) == pci_dma_pending.end())
-    throw "unexpected completion";
-  pci_dma_pending.erase(op);
-
-  memcpy(op->data, (void *)rc->data, op->len);
-
-#if 0
-  std::cerr << "dma read comp: ";
-  for (size_t i = 0; i < op->len; i++)
-    std::cerr << (unsigned) op->data[i] << " ";
-  std::cerr << std::endl;
-#endif
-
-  op->engine->pci_op_complete(op);
-}
-
 static void h2d_writecomp(volatile struct SimbricksProtoPcieH2DWritecomp *wc) {
   DMAOp *op = (DMAOp *)(uintptr_t)wc->req_id;
   if (pci_dma_pending.find(op) == pci_dma_pending.end())
@@ -589,6 +579,14 @@ static void h2d_write(MMIOInterface &mmio,
   }
 }
 
+static void h2d_readcomp(volatile struct SimbricksProtoPcieH2DReadcomp *rc) {
+  AXIReadOp *op = (AXIReadOp *)(uintptr_t)rc->req_id;
+  memcpy(op->buf, (void *)rc->data, op->len);
+
+  mem_control_reader->readDone(op);
+}
+
+
 static void poll_h2d(MMIOInterface &mmio) {
   volatile union SimbricksProtoPcieH2D *msg =
       SimbricksPcieIfH2DInPoll(&nicif.pcie, main_time);
@@ -609,11 +607,11 @@ static void poll_h2d(MMIOInterface &mmio) {
       h2d_write(mmio, &msg->write);
       break;
 
-    /*case SIMBRICKS_PROTO_PCIE_H2D_MSG_READCOMP:
+    case SIMBRICKS_PROTO_PCIE_H2D_MSG_READCOMP:
       h2d_readcomp(&msg->readcomp);
       break;
 
-    case SIMBRICKS_PROTO_PCIE_H2D_MSG_WRITECOMP:
+    /*case SIMBRICKS_PROTO_PCIE_H2D_MSG_WRITECOMP:
       h2d_writecomp(&msg->writecomp);
       break;*/
 
@@ -703,7 +701,7 @@ int main(int argc, char *argv[]) {
 #endif
 
   MMIOInterface mmio(*top);
-  MemReader mem_control_reader(*top);
+  mem_control_reader = new MemReader(*top);
   MemWriter mem_control_writer(*top);
 
   reset_inputs(top);
@@ -749,7 +747,7 @@ int main(int argc, char *argv[]) {
 
     mmio.step();
     mem_control_writer.step();
-    mem_control_reader.step();
+    mem_control_reader->step();
 
     /* raising edge */
     top->clock = !top->clock;
