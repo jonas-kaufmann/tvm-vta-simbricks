@@ -65,18 +65,18 @@ static void alloc_init()
 }
 
 void* VTAMemAlloc(size_t size, int cached) {
-  std::cerr << "simbricks-pci: VTAMemAlloc(" << size << ")" << std::endl;
+  //std::cerr << "simbricks-pci: VTAMemAlloc(" << size << ")" << std::endl;
   alloc_init();
 
   assert (alloc_off + size <= alloc_size);
   void *addr = (void *) ((uint8_t *) alloc_base + alloc_off);
   alloc_off += size;
-  std::cerr << "simbricks-pci:    = " << addr << std::endl;
+  //std::cerr << "simbricks-pci:    = " << addr << std::endl;
   return addr;
 }
 
 void VTAMemFree(void* buf) {
-  std::cerr << "simbricks-pci: VTAMemFree(" << buf << ")" << std::endl;
+  //std::cerr << "simbricks-pci: VTAMemFree(" << buf << ")" << std::endl;
   // TODO
 }
 
@@ -124,7 +124,7 @@ void *VTAMapRegister(uint32_t addr) {
       abort();
     }
 
-    std::cerr << "vfio registers mapped (len = " << reg_len << ")" << std::endl;
+    //std::cerr << "vfio registers mapped (len = " << reg_len << ")" << std::endl;
   }
 
   return (uint8_t *) reg_bar + addr;
@@ -165,16 +165,6 @@ class VTADevice {
 
     // VTA start
     VTAWriteMappedReg(vta_host_handle_, 0x0, VTA_START);
-
-    std::cerr << "inst:" << std::endl;
-    for (uint32_t i = 0; i < insn_count; i++) {
-      std::cerr << "    " << std::endl;
-      for (uint32_t j = 0; j < 16; j++) {
-        std::cerr << (uint32_t) *((uint8_t *) alloc_base + (insn_phy_addr - alloc_phys_base) + (i * 16) + (j)) << " ";
-      }
-      std::cerr << std::endl;
-    }
-    std::cerr << std::endl;
 
     // Loop until the VTA is done
     unsigned t, flag = 0;
