@@ -21,6 +21,7 @@
  */
 
 #include <vta/driver.h>
+#include <cstdlib>
 #include <thread>
 #include <iostream>
 #include <time.h>
@@ -108,7 +109,12 @@ void VTAInvalidateCache(void* vir_addr, vta_phy_addr_t phy_addr, int size) {
 
 void *VTAMapRegister(uint32_t addr) {
   if (!reg_bar) {
-    if ((vfio_fd = vfio_init("0000:00:02.0")) < 0) {
+    char *device = std::getenv("VTA_DEVICE");
+    if (device == nullptr) {
+      std::cerr << "VTA_DEVICE is not set" << std::endl;
+      abort();
+    }
+    if ((vfio_fd = vfio_init(device)) < 0) {
       std::cerr << "vfio init failed" << std::endl;
       abort();
     }
