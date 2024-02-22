@@ -174,14 +174,15 @@ class VTADevice {
 
     // Loop until the VTA is done
     unsigned t, flag = 0;
-    for (t = 0; t < wait_cycles; ++t) {
+    for (;;) {
       flag = VTAReadMappedReg(vta_host_handle_, 0x00);
       flag &= 0x2;
       if (flag == 0x2) break;
       std::this_thread::yield();
     }
     // Report error if timeout
-    return t < wait_cycles ? 0 : 1;
+    // return t < wait_cycles ? 0 : 1;
+    return 0;
   }
 
  private:
