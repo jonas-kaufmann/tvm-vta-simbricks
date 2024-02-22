@@ -175,6 +175,7 @@ struct MMIOOp {
   uint64_t value;
   size_t len;
   bool isWrite;
+  bool isPosted;
 };
 
 static void mmio_done(MMIOOp *op);
@@ -318,7 +319,7 @@ class MMIOInterface {
     queue.push_back(op);
   }
 
-  void issueWrite(uint64_t id, uint64_t addr, size_t len, uint64_t val) {
+  void issueWrite(uint64_t id, uint64_t addr, size_t len, uint64_t val, bool isPosted) {
     MMIOOp *op = new MMIOOp;
 #ifdef MMIO_DEBUG
     std::cout << main_time << " MMIO: write id=" << id << " addr=" << std::hex
@@ -330,6 +331,7 @@ class MMIOInterface {
     op->len = len;
     op->value = val;
     op->isWrite = true;
+    op->isPosted = true;
     queue.push_back(op);
   }
 };
@@ -473,26 +475,28 @@ class MemWriter : public AXIWriter {
 
 
 static void mmio_done(MMIOOp *op) {
-  volatile union SimbricksProtoPcieD2H *msg = d2h_alloc();
-  volatile struct SimbricksProtoPcieD2HReadcomp *rc;
-  volatile struct SimbricksProtoPcieD2HWritecomp *wc;
+  if (!op->isWrite || !op->isPosted) {
+    volatile union SimbricksProtoPcieD2H *msg = d2h_alloc();
+    volatile struct SimbricksProtoPcieD2HReadcomp *rc;
+    volatile struct SimbricksProtoPcieD2HWritecomp *wc;
 
-  if (!msg)
-    throw "completion alloc failed";
+    if (!msg)
+      throw "completion alloc failed";
 
-  if (op->isWrite) {
-    wc = &msg->writecomp;
-    wc->req_id = op->id;
+    if (op->isWrite) {
+      wc = &msg->writecomp;
+      wc->req_id = op->id;
 
-    SimbricksPcieIfD2HOutSend(&nicif.pcie, msg,
-                              SIMBRICKS_PROTO_PCIE_D2H_MSG_WRITECOMP);
-  } else {
-    rc = &msg->readcomp;
-    memcpy((void *)rc->data, &op->value, op->len);
-    rc->req_id = op->id;
+      SimbricksPcieIfD2HOutSend(&nicif.pcie, msg,
+                                SIMBRICKS_PROTO_PCIE_D2H_MSG_WRITECOMP);
+    } else {
+      rc = &msg->readcomp;
+      memcpy((void *)rc->data, &op->value, op->len);
+      rc->req_id = op->id;
 
-    SimbricksPcieIfD2HOutSend(&nicif.pcie, msg,
-                              SIMBRICKS_PROTO_PCIE_D2H_MSG_READCOMP);
+      SimbricksPcieIfD2HOutSend(&nicif.pcie, msg,
+                                SIMBRICKS_PROTO_PCIE_D2H_MSG_READCOMP);
+    }
   }
 
   delete op;
@@ -560,21 +564,24 @@ static void h2d_read(MMIOInterface &mmio,
 }
 
 static void h2d_write(MMIOInterface &mmio,
-                      volatile struct SimbricksProtoPcieH2DWrite *write) {
-  
-
+                      volatile struct SimbricksProtoPcieH2DWrite *write,
+                      bool isPosted) {
   // std::cout << "got write " << write->offset << " = " << val << std::endl;
 
   if (write->bar == 0) {
     uint64_t val = 0;
     memcpy(&val, (void *)write->data, write->len);
-    mmio.issueWrite(write->req_id, write->offset, write->len, val);
+    mmio.issueWrite(write->req_id, write->offset, write->len, val, isPosted);
   } else if (write->bar == 2) {
-    volatile union SimbricksProtoPcieD2H *msg = d2h_alloc();
-    volatile struct SimbricksProtoPcieD2HWritecomp *wc;
-
     memcpy((uint8_t *) dev_mem + write->offset, (void *) write->data,
       write->len);
+    
+    if (isPosted) {
+      return;
+    }
+
+    volatile union SimbricksProtoPcieD2H *msg = d2h_alloc();
+    volatile struct SimbricksProtoPcieD2HWritecomp *wc;
 
     wc = &msg->writecomp;
     wc->req_id = write->req_id;
@@ -600,7 +607,7 @@ static void h2d_writecomp(volatile struct SimbricksProtoPcieH2DWritecomp *wc) {
 static void poll_h2d(MMIOInterface &mmio) {
   volatile union SimbricksProtoPcieH2D *msg =
       SimbricksPcieIfH2DInPoll(&nicif.pcie, main_time);
-  uint8_t t;
+  uint16_t t;
 
   if (msg == NULL)
     return;
@@ -614,7 +621,11 @@ static void poll_h2d(MMIOInterface &mmio) {
       break;
 
     case SIMBRICKS_PROTO_PCIE_H2D_MSG_WRITE:
-      h2d_write(mmio, &msg->write);
+      h2d_write(mmio, &msg->write, false);
+      break;
+
+    case SIMBRICKS_PROTO_PCIE_H2D_MSG_WRITE_POSTED:
+      h2d_write(mmio, &msg->write, true);
       break;
 
     case SIMBRICKS_PROTO_PCIE_H2D_MSG_READCOMP:
