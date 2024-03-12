@@ -164,10 +164,13 @@ class VTADevice {
   int Run(vta_phy_addr_t insn_phy_addr,
           uint32_t insn_count,
           uint32_t wait_cycles) {
-    VTAWriteMappedReg(vta_host_handle_, 0x04, 0);
     VTAWriteMappedReg(vta_host_handle_, 0x08, insn_count);
     VTAWriteMappedReg(vta_host_handle_, 0x0c, insn_phy_addr);
     VTAWriteMappedReg(vta_host_handle_, 0x10, insn_phy_addr >> 32);
+    VTAWriteMappedReg(vta_host_handle_, 0x14, 0);
+    VTAWriteMappedReg(vta_host_handle_, 0x18, 0);
+    VTAWriteMappedReg(vta_host_handle_, 0x1c, 0);
+    VTAWriteMappedReg(vta_host_handle_, 0x20, 0);
 
     // VTA start
     VTAWriteMappedReg(vta_host_handle_, 0x0, VTA_START);
