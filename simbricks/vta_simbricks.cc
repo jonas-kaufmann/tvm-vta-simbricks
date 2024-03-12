@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Max Planck Institute for Software Systems, and
+ * Copyright 2024 Max Planck Institute for Software Systems, and
  * National University of Singapore
  *
  * Permission is hereby granted, free of charge, to any person obtaining
@@ -25,11 +25,15 @@
 #include <signal.h>
 #include <verilated.h>
 
-//#define TRACE_ENABLED
+#include <cassert>
 
-#include <deque>
+#include "VVTAShell.h"
+#include "simbricks/pcie/proto.h"
+
+#define TRACE_ENABLED
+// #define MMIO_DEBUG
+
 #include <iostream>
-#include <set>
 #ifdef TRACE_ENABLED
 #include <verilated_vcd_c.h>
 #endif
@@ -39,522 +43,352 @@ extern "C" {
 #include <simbricks/nicif/nicif.h>
 }
 
-#include "obj_dir/VVTAShell.h"
-#include "axi.h"
+#include "vta_simbricks.hh"
 
-struct DMAOp;
-class MemReader;
+// #pragma GCC push_options
+// #pragma GCC optimize("O0")
 
-static uint64_t clock_period = 10 * 1000ULL;  // 10ns -> 100MHz
-static size_t dev_mem_size = 1024 * 1024 * 1024;
+namespace {
+uint64_t clock_period = 10 * 1000ULL;  // 10ns -> 100MHz
+size_t dev_mem_size = 1024UL * 1024 * 1024;
 
-static volatile int exiting = 0;
-static bool terminated = false;
+volatile int exiting = 0;
+bool terminated = false;
 uint64_t main_time = 0;
-static struct SimbricksNicIf nicif;
+struct SimbricksNicIf nicif {};
 
-MemReader *mem_control_reader;
-static void *dev_mem;
+VTAMemReader *mem_control_reader;
+void *dev_mem;
 
+// VerilatedContext *vcontext;
+VVTAShell *shell;
 #ifdef TRACE_ENABLED
-static VerilatedVcdC *trace;
+VerilatedVcdC *trace;
 #endif
 
-VVTAShell *shell;
+volatile union SimbricksProtoPcieD2H *d2h_alloc();
 
-static volatile union SimbricksProtoPcieD2H *d2h_alloc(void);
-static void report_outputs(VVTAShell *top);
-
-static void sigint_handler(int dummy) {
+void sigint_handler(int dummy) {
   exiting = 1;
 }
 
-static void sigusr1_handler(int dummy) {
-  fprintf(stderr, "main_time = %lu\n", main_time);
-  report_outputs(shell);
+void reset_inputs(VVTAShell &top) {
+  top.clock = 0;
+  top.reset = 0;
+
+  top.io_host_aw_valid = 0;
+  top.io_host_aw_bits_addr = 0;
+  top.io_host_w_valid = 0;
+  top.io_host_w_bits_data = 0;
+  top.io_host_w_bits_strb = 0;
+  top.io_host_b_ready = 0;
+  top.io_host_ar_valid = 0;
+  top.io_host_ar_bits_addr = 0;
+  top.io_host_r_ready = 0;
+
+  top.io_mem_aw_ready = 0;
+  top.io_mem_w_ready = 0;
+  top.io_mem_b_valid = 0;
+  top.io_mem_b_bits_resp = 0;
+  top.io_mem_b_bits_id = 0;
+  top.io_mem_b_bits_user = 0;
+  top.io_mem_ar_ready = 0;
+  top.io_mem_r_valid = 0;
+  top.io_mem_r_bits_data = 0;
+  top.io_mem_r_bits_resp = 0;
+  top.io_mem_r_bits_last = 0;
+  top.io_mem_r_bits_id = 0;
+  top.io_mem_r_bits_user = 0;
 }
 
-double sc_time_stamp() {
-  return main_time;
-}
-
-static void reset_inputs(VVTAShell *top) {
-  top->clock = 0;
-  top->reset = 0;
-
-  top->io_host_aw_valid = 0;
-  top->io_host_aw_bits_addr = 0;
-  top->io_host_w_valid = 0;
-  top->io_host_w_bits_data = 0;
-  top->io_host_w_bits_strb = 0;
-  top->io_host_b_ready = 0;
-  top->io_host_ar_valid = 0;
-  top->io_host_ar_bits_addr = 0;
-  top->io_host_r_ready = 0;
-
-  top->io_mem_aw_ready = 0;
-  top->io_mem_w_ready = 0;
-  top->io_mem_b_valid = 0;
-  top->io_mem_b_bits_resp = 0;
-  top->io_mem_b_bits_id = 0;
-  top->io_mem_b_bits_user = 0;
-  top->io_mem_ar_ready = 0;
-  top->io_mem_r_valid = 0;
-  top->io_mem_r_bits_data = 0;
-  top->io_mem_r_bits_resp = 0;
-  top->io_mem_r_bits_last = 0;
-  top->io_mem_r_bits_id = 0;
-  top->io_mem_r_bits_user = 0;
-}
-
-static void report_output(const char *label, uint64_t val) {
+void report_output(const char *label, uint64_t val) {
   if (val == 0)
     return;
 
-  std::cout << "    " << label << " = " << val << std::endl;
+  std::cout << "    " << label << " = " << val << "\n";
 }
 
-static void report_outputs(VVTAShell *top) {
-  report_output("in:  clock", top->clock);
-  report_output("in:  reset", top->reset);
+void report_outputs(const VVTAShell &top) {
+  report_output("in:  clock", top.clock);
+  report_output("in:  reset", top.reset);
 
-  report_output("in:  io_host_aw_valid", top->io_host_aw_valid);
-  report_output("out: io_host_aw_ready", top->io_host_aw_ready);
-  report_output("in:  io_host_aw_bits_addr", top->io_host_aw_bits_addr);
-  report_output("in:  io_host_w_valid", top->io_host_w_valid);
-  report_output("out: io_host_w_ready", top->io_host_w_ready);
-  report_output("in:  io_host_w_bits_data", top->io_host_w_bits_data);
-  report_output("in:  io_host_w_bits_strb", top->io_host_w_bits_strb);
-  report_output("in:  io_host_b_ready", top->io_host_b_ready);
-  report_output("out: io_host_b_valid", top->io_host_b_valid);
-  report_output("out: io_host_b_bits_resp", top->io_host_b_bits_resp);
-  report_output("in:  io_host_ar_valid", top->io_host_ar_valid);
-  report_output("out: io_host_ar_ready", top->io_host_ar_ready);
-  report_output("in:  io_host_ar_bits_addr", top->io_host_ar_bits_addr);
-  report_output("in:  io_host_r_ready", top->io_host_r_ready);
-  report_output("out: io_host_r_valid", top->io_host_r_valid);
-  report_output("out: io_host_r_bits_data", top->io_host_r_bits_data);
-  report_output("out: io_host_r_bits_resp", top->io_host_r_bits_resp);
+  report_output("in:  io_host_aw_valid", top.io_host_aw_valid);
+  report_output("out: io_host_aw_ready", top.io_host_aw_ready);
+  report_output("in:  io_host_aw_bits_addr", top.io_host_aw_bits_addr);
+  report_output("in:  io_host_w_valid", top.io_host_w_valid);
+  report_output("out: io_host_w_ready", top.io_host_w_ready);
+  report_output("in:  io_host_w_bits_data", top.io_host_w_bits_data);
+  report_output("in:  io_host_w_bits_strb", top.io_host_w_bits_strb);
+  report_output("in:  io_host_b_ready", top.io_host_b_ready);
+  report_output("out: io_host_b_valid", top.io_host_b_valid);
+  report_output("out: io_host_b_bits_resp", top.io_host_b_bits_resp);
+  report_output("in:  io_host_ar_valid", top.io_host_ar_valid);
+  report_output("out: io_host_ar_ready", top.io_host_ar_ready);
+  report_output("in:  io_host_ar_bits_addr", top.io_host_ar_bits_addr);
+  report_output("in:  io_host_r_ready", top.io_host_r_ready);
+  report_output("out: io_host_r_valid", top.io_host_r_valid);
+  report_output("out: io_host_r_bits_data", top.io_host_r_bits_data);
+  report_output("out: io_host_r_bits_resp", top.io_host_r_bits_resp);
 
-  report_output("in:  io_mem_aw_ready", top->io_mem_aw_ready);
-  report_output("out: io_mem_aw_valid", top->io_mem_aw_valid);
-  report_output("out: io_mem_aw_bits_addr", top->io_mem_aw_bits_addr);
-  report_output("out: io_mem_aw_bits_id", top->io_mem_aw_bits_id);
-  report_output("out: io_mem_aw_bits_user", top->io_mem_aw_bits_user);
-  report_output("out: io_mem_aw_bits_len", top->io_mem_aw_bits_len);
-  report_output("out: io_mem_aw_bits_size", top->io_mem_aw_bits_size);
-  report_output("out: io_mem_aw_bits_burst", top->io_mem_aw_bits_burst);
-  report_output("out: io_mem_aw_bits_lock", top->io_mem_aw_bits_lock);
-  report_output("out: io_mem_aw_bits_cache", top->io_mem_aw_bits_cache);
-  report_output("out: io_mem_aw_bits_prot", top->io_mem_aw_bits_prot);
-  report_output("out: io_mem_aw_bits_qos", top->io_mem_aw_bits_qos);
-  report_output("out: io_mem_aw_bits_region", top->io_mem_aw_bits_region);
-  report_output("in:  io_mem_w_ready", top->io_mem_w_ready);
-  report_output("out: io_mem_w_valid", top->io_mem_w_valid);
-  report_output("out: io_mem_w_bits_data", top->io_mem_w_bits_data);
-  report_output("out: io_mem_w_bits_strb", top->io_mem_w_bits_strb);
-  report_output("out: io_mem_w_bits_last", top->io_mem_w_bits_last);
-  report_output("out: io_mem_w_bits_id", top->io_mem_w_bits_id);
-  report_output("out: io_mem_w_bits_user", top->io_mem_w_bits_user);
-  report_output("in:  io_mem_b_valid", top->io_mem_b_valid);
-  report_output("in:  io_mem_b_bits_resp", top->io_mem_b_bits_resp);
-  report_output("in:  io_mem_b_bits_id", top->io_mem_b_bits_id);
-  report_output("in:  io_mem_b_bits_user", top->io_mem_b_bits_user);
-  report_output("in:  io_mem_ar_ready", top->io_mem_ar_ready);
-  report_output("in:  io_mem_r_valid", top->io_mem_r_valid);
-  report_output("in:  io_mem_r_bits_data", top->io_mem_r_bits_data);
-  report_output("in:  io_mem_r_bits_resp", top->io_mem_r_bits_resp);
-  report_output("in:  io_mem_r_bits_last", top->io_mem_r_bits_last);
-  report_output("in:  io_mem_r_bits_id", top->io_mem_r_bits_id);
-  report_output("in:  io_mem_r_bits_user", top->io_mem_r_bits_user);
+  report_output("in:  io_mem_aw_ready", top.io_mem_aw_ready);
+  report_output("out: io_mem_aw_valid", top.io_mem_aw_valid);
+  report_output("out: io_mem_aw_bits_addr", top.io_mem_aw_bits_addr);
+  report_output("out: io_mem_aw_bits_id", top.io_mem_aw_bits_id);
+  report_output("out: io_mem_aw_bits_user", top.io_mem_aw_bits_user);
+  report_output("out: io_mem_aw_bits_len", top.io_mem_aw_bits_len);
+  report_output("out: io_mem_aw_bits_size", top.io_mem_aw_bits_size);
+  report_output("out: io_mem_aw_bits_burst", top.io_mem_aw_bits_burst);
+  report_output("out: io_mem_aw_bits_lock", top.io_mem_aw_bits_lock);
+  report_output("out: io_mem_aw_bits_cache", top.io_mem_aw_bits_cache);
+  report_output("out: io_mem_aw_bits_prot", top.io_mem_aw_bits_prot);
+  report_output("out: io_mem_aw_bits_qos", top.io_mem_aw_bits_qos);
+  report_output("out: io_mem_aw_bits_region", top.io_mem_aw_bits_region);
+  report_output("in:  io_mem_w_ready", top.io_mem_w_ready);
+  report_output("out: io_mem_w_valid", top.io_mem_w_valid);
+  report_output("out: io_mem_w_bits_data", top.io_mem_w_bits_data);
+  report_output("out: io_mem_w_bits_strb", top.io_mem_w_bits_strb);
+  report_output("out: io_mem_w_bits_last", top.io_mem_w_bits_last);
+  report_output("out: io_mem_w_bits_id", top.io_mem_w_bits_id);
+  report_output("out: io_mem_w_bits_user", top.io_mem_w_bits_user);
+  report_output("in:  io_mem_b_valid", top.io_mem_b_valid);
+  report_output("in:  io_mem_b_bits_resp", top.io_mem_b_bits_resp);
+  report_output("in:  io_mem_b_bits_id", top.io_mem_b_bits_id);
+  report_output("in:  io_mem_b_bits_user", top.io_mem_b_bits_user);
+  report_output("in:  io_mem_ar_ready", top.io_mem_ar_ready);
+  report_output("in:  io_mem_r_valid", top.io_mem_r_valid);
+  report_output("in:  io_mem_r_bits_data", top.io_mem_r_bits_data);
+  report_output("in:  io_mem_r_bits_resp", top.io_mem_r_bits_resp);
+  report_output("in:  io_mem_r_bits_last", top.io_mem_r_bits_last);
+  report_output("in:  io_mem_r_bits_id", top.io_mem_r_bits_id);
+  report_output("in:  io_mem_r_bits_user", top.io_mem_r_bits_user);
+}
+
+void sigusr1_handler(int dummy) {
+  fprintf(stderr, "main_time = %lu\n", main_time);
+  report_outputs(*shell);
 }
 
 struct MMIOOp {
-  uint64_t id;
-  uint64_t addr;
-  uint64_t value;
-  size_t len;
-  bool isWrite;
-  bool isPosted;
+  uint64_t id = 0;
+  uint64_t addr = 0;
+  uint64_t value = 0;
+  size_t len = 0;
+  bool isWrite = false;
+  bool isPosted = false;
 };
 
-static void mmio_done(MMIOOp *op);
+void mmio_done(MMIOOp *mmio_op);
 
 class MMIOInterface {
  protected:
+  VVTAShell &top_;
+  std::deque<MMIOOp *> queue_{};
+  MMIOOp *rCur_ = nullptr;
+  MMIOOp *wCur_ = nullptr;
 
-  VVTAShell &top;
-  std::deque<MMIOOp *> queue;
-  MMIOOp *rCur, *wCur;
+  bool rAAck_ = false;
+  bool rDAck_ = false;
+  bool wAAck_ = false;
+  bool wDAck_ = false;
+  bool wBAck_ = false;
 
-  bool rAAck, rDAck;
-  bool wAAck, wDAck, wBAck;
  public:
-  MMIOInterface(VVTAShell &top_)
-      : top(top_), rCur(0), wCur(0) {
+  explicit MMIOInterface(VVTAShell &top) : top_(top) {
   }
 
   void step() {
-    if (rCur) {
+    if (rCur_) {
       /* work on active read operation */
-      if (rDAck) {
+      if (rDAck_) {
         /* read fully completed */
 #ifdef MMIO_DEBUG
-        std::cout << main_time << " MMIO: completed AXI read op=" << rCur
-                  << " val=" << rCur->value << std::endl;
-        //report_outputs(&top);
+        std::cout << main_time << " MMIO: completed AXI read op=" << rCur_
+                  << " val=" << rCur_->value << "\n";
+        // report_outputs(&top);
 #endif
-        top.io_host_r_ready = 0;
-        mmio_done(rCur);
-        rCur = 0;
-      } else if (top.io_host_r_valid) {
-        assert(rAAck);
-        rCur->value = top.io_host_r_bits_data;
-        rDAck = true; // need to delay with ready high for a full cycle for
-                      // chisel code to fully register
+        top_.io_host_r_ready = 0;
+        mmio_done(rCur_);
+        rCur_ = nullptr;
+      } else if (top_.io_host_r_valid) {
+        assert(rAAck_);
+        rCur_->value = top_.io_host_r_bits_data;
+        rDAck_ = true;  // need to delay with ready high for a full cycle for
+                        // chisel code to fully register
       }
 
-      if (top.io_host_ar_valid && (top.io_host_ar_ready || rAAck)) {
+      if (top_.io_host_ar_valid && (top_.io_host_ar_ready || rAAck_)) {
         /* read addr handshake is complete */
 #ifdef MMIO_DEBUG
-        std::cout << main_time << " MMIO: AXI read addr handshake done op="
-                  << rCur << std::endl;
-        //report_outputs(&top);
+        std::cout << main_time
+                  << " MMIO: AXI read addr handshake done op=" << rCur_ << "\n";
+        // report_outputs(&top);
 #endif
-        top.io_host_ar_valid = 0;
-        rAAck = true;
+        top_.io_host_ar_valid = 0;
+        rAAck_ = true;
       }
-    } else if (wCur) {
+    } else if (wCur_) {
       /* work on active write operation */
 
-      if (wBAck) {
+      if (wBAck_) {
         /* write fully completed */
 #ifdef MMIO_DEBUG
-        std::cout << main_time << " MMIO: completed AXI wriste op=" << wCur
-                  << std::endl;
-        //report_outputs(&top);
+        std::cout << main_time << " MMIO: completed AXI wriste op=" << wCur_
+                  << "\n";
+        // report_outputs(&top);
 #endif
-        top.io_host_b_ready = 0;
-        mmio_done(wCur);
-        wCur = 0;
-      } else if (top.io_host_b_valid) {
-        assert(wAAck && wDAck);
-        wBAck = true; // need to delay with ready high for a full cycle for
-                      // chisel code to fully register
+        top_.io_host_b_ready = 0;
+        mmio_done(wCur_);
+        wCur_ = nullptr;
+      } else if (top_.io_host_b_valid) {
+        assert(wAAck_ && wDAck_);
+        wBAck_ = true;  // need to delay with ready high for a full cycle for
+                        // chisel code to fully register
       }
 
-      if (top.io_host_w_valid && (top.io_host_w_ready || wDAck)) {
+      if (top_.io_host_w_valid && (top_.io_host_w_ready || wDAck_)) {
         /* write data handshake is complete */
 #ifdef MMIO_DEBUG
-        std::cout << main_time << " MMIO: AXI write data handshake done op="
-                  << wCur << std::endl;
-        //report_outputs(&top);
+        std::cout << main_time
+                  << " MMIO: AXI write data handshake done op=" << wCur_
+                  << "\n";
+        // report_outputs(&top);
 #endif
-        top.io_host_w_valid = 0;
-        wDAck = true;
+        top_.io_host_w_valid = 0;
+        wDAck_ = true;
       }
 
-
-      if (top.io_host_aw_valid && (top.io_host_aw_ready || wAAck)) {
+      if (top_.io_host_aw_valid && (top_.io_host_aw_ready || wAAck_)) {
         /* write addr handshake is complete */
 #ifdef MMIO_DEBUG
-        std::cout << main_time << " MMIO: AXI write addr handshake done op="
-                  << wCur << std::endl;
-        //report_outputs(&top);
+        std::cout << main_time
+                  << " MMIO: AXI write addr handshake done op=" << wCur_
+                  << "\n";
+        // report_outputs(&top);
 #endif
-        top.io_host_aw_valid = 0;
-        wAAck = true;
+        top_.io_host_aw_valid = 0;
+        wAAck_ = true;
 
-        wDAck = top.io_host_w_ready;
-        top.io_host_w_valid = 1;
+        wDAck_ = top_.io_host_w_ready;
+        top_.io_host_w_valid = 1;
       }
 
-    } else if (/*!top.clk &&*/ !queue.empty()) {
+    } else if (/*!top.clk &&*/ !queue_.empty()) {
       /* issue new operation */
-      MMIOOp *op = queue.front();
+      MMIOOp *mmio_op = queue_.front();
 #ifdef MMIO_DEBUG
-        std::cout << main_time << " MMIO: issuing new op on axi op=" << op
-                  << std::endl;
-        //report_outputs(&top);
+      std::cout << main_time << " MMIO: issuing new op on axi op=" << mmio_op
+                << "\n";
+      // report_outputs(&top);
 #endif
-      queue.pop_front();
-      if (!op->isWrite) {
+      queue_.pop_front();
+      if (!mmio_op->isWrite) {
         /* issue new read */
-        rCur = op;
+        rCur_ = mmio_op;
 
-        top.io_host_ar_bits_addr = rCur->addr;
-        rAAck = top.io_host_ar_ready;
-        top.io_host_ar_valid = 1;
-        rDAck = false;
-        top.io_host_r_ready = 1;
+        top_.io_host_ar_bits_addr = rCur_->addr;
+        rAAck_ = top_.io_host_ar_ready;
+        top_.io_host_ar_valid = 1;
+        rDAck_ = false;
+        top_.io_host_r_ready = 1;
       } else {
         /* issue new write */
-        wCur = op;
+        wCur_ = mmio_op;
 
-        top.io_host_aw_bits_addr = wCur->addr;
-        wAAck = top.io_host_aw_ready;
-        top.io_host_aw_valid = 1;
+        top_.io_host_aw_bits_addr = wCur_->addr;
+        wAAck_ = top_.io_host_aw_ready;
+        top_.io_host_aw_valid = 1;
 
-        top.io_host_w_bits_data = wCur->value;
-        top.io_host_w_bits_strb = 0xf;
-        wDAck = false;
-        top.io_host_w_valid = 0;
+        top_.io_host_w_bits_data = wCur_->value;
+        top_.io_host_w_bits_strb = 0xf;
+        wDAck_ = false;
+        top_.io_host_w_valid = 0;
 
-        wBAck = false;
-        top.io_host_b_ready = 1;
+        wBAck_ = false;
+        top_.io_host_b_ready = 1;
       }
     }
   }
 
-  void issueRead(uint64_t id, uint64_t addr, size_t len) {
-    MMIOOp *op = new MMIOOp;
+  void issueRead(uint64_t req_id, uint64_t addr, size_t len) {
+    MMIOOp *mmio_op = new MMIOOp{};
 #ifdef MMIO_DEBUG
-    std::cout << main_time << " MMIO: read id=" << id << " addr=" << std::hex
-              << addr << " len=" << len << " op=" << op << std::endl;
+    std::cout << main_time << " MMIO: read id=" << req_id
+              << " addr=" << std::hex << addr << " len=" << len
+              << " op=" << mmio_op << "\n";
 #endif
-    op->id = id;
-    op->addr = addr;
-    op->len = len;
-    op->isWrite = false;
-    queue.push_back(op);
+    mmio_op->id = req_id;
+    mmio_op->addr = addr;
+    mmio_op->len = len;
+    mmio_op->isWrite = false;
+    queue_.push_back(mmio_op);
   }
 
-  void issueWrite(uint64_t id, uint64_t addr, size_t len, uint64_t val, bool isPosted) {
-    MMIOOp *op = new MMIOOp;
+  void issueWrite(uint64_t req_id, uint64_t addr, size_t len, uint64_t val,
+                  bool isPosted) {
+    MMIOOp *mmio_op = new MMIOOp{};
 #ifdef MMIO_DEBUG
-    std::cout << main_time << " MMIO: write id=" << id << " addr=" << std::hex
-              << addr << " len=" << len << " val=" << val << " op=" << op
-              << std::endl;
+    std::cout << main_time << " MMIO: write id=" << req_id
+              << " addr=" << std::hex << addr << " len=" << len
+              << " val=" << val << " op=" << mmio_op << "\n";
 #endif
-    op->id = id;
-    op->addr = addr;
-    op->len = len;
-    op->value = val;
-    op->isWrite = true;
-    op->isPosted = true;
-    queue.push_back(op);
+    mmio_op->id = req_id;
+    mmio_op->addr = addr;
+    mmio_op->len = len;
+    mmio_op->value = val;
+    mmio_op->isWrite = true;
+    mmio_op->isPosted = isPosted;
+    queue_.push_back(mmio_op);
   }
 };
 
-class MemReader : public AXIReader {
- protected:
-  static AXIChannelReadAddr *addrPort(VVTAShell &top) {
-    AXIChannelReadAddr *cra = new AXIChannelReadAddr;
-    cra->addr_bits = 64;
-    cra->id_bits = 8;
-    cra->user_bits = 1;
-
-    cra->ready = &top.io_mem_ar_ready;
-    cra->valid = &top.io_mem_ar_valid;
-    cra->addr = &top.io_mem_ar_bits_addr;
-    cra->id = &top.io_mem_ar_bits_id;
-    cra->user = &top.io_mem_ar_bits_user;
-    cra->len = &top.io_mem_ar_bits_len;
-    cra->size = &top.io_mem_ar_bits_size;
-    cra->burst = &top.io_mem_ar_bits_burst;
-    cra->lock = &top.io_mem_ar_bits_lock;
-    cra->cache = &top.io_mem_ar_bits_cache;
-    cra->prot = &top.io_mem_ar_bits_prot;
-    cra->qos = &top.io_mem_ar_bits_qos;
-    cra->region = &top.io_mem_ar_bits_region;
-    return cra;
-  }
-
-  static AXIChannelReadData *dataPort(VVTAShell &top) {
-    AXIChannelReadData *crd = new AXIChannelReadData;
-    crd->data_bits = 64;
-    crd->id_bits = 8;
-    crd->user_bits = 1;
-
-    crd->ready = &top.io_mem_r_ready;
-    crd->valid = &top.io_mem_r_valid;
-    crd->data = &top.io_mem_r_bits_data;
-    crd->resp = &top.io_mem_r_bits_resp;
-    crd->last = &top.io_mem_r_bits_last;
-    crd->id = &top.io_mem_r_bits_id;
-    crd->user = &top.io_mem_r_bits_user;
-    return crd;
-  }
-
-  virtual void doRead(AXIReadOp *op) override {
+void mmio_done(MMIOOp *mmio_op) {
+  if (!mmio_op->isWrite || !mmio_op->isPosted) {
     volatile union SimbricksProtoPcieD2H *msg = d2h_alloc();
-    if (!msg)
-      throw "dma read alloc failed";
-
-    volatile struct SimbricksProtoPcieD2HRead *read = &msg->read;
-    read->req_id = (uintptr_t)op;
-    read->offset = op->addr;
-    read->len = op->len;
-
-    SimbricksPcieIfD2HOutSend(&nicif.pcie, msg,
-                              SIMBRICKS_PROTO_PCIE_D2H_MSG_READ);
-  }
-
- public:
-  MemReader(VVTAShell &top)
-    : AXIReader(*addrPort(top), *dataPort(top))
-  {
-  }
-};
-
-class MemWriter : public AXIWriter {
- protected:
-  static AXIChannelWriteAddr *addrPort(VVTAShell &top) {
-    AXIChannelWriteAddr *cwa = new AXIChannelWriteAddr;
-    cwa->addr_bits = 64;
-    cwa->id_bits = 8;
-    cwa->user_bits = 1;
-
-    cwa->ready = &top.io_mem_aw_ready;
-    cwa->valid = &top.io_mem_aw_valid;
-    cwa->addr = &top.io_mem_aw_bits_addr;
-    cwa->id = &top.io_mem_aw_bits_id;
-    cwa->user = &top.io_mem_aw_bits_user;
-    cwa->len = &top.io_mem_aw_bits_len;
-    cwa->size = &top.io_mem_aw_bits_size;
-    cwa->burst = &top.io_mem_aw_bits_burst;
-    cwa->lock = &top.io_mem_aw_bits_lock;
-    cwa->cache = &top.io_mem_aw_bits_cache;
-    cwa->prot = &top.io_mem_aw_bits_prot;
-    cwa->qos = &top.io_mem_aw_bits_qos;
-    cwa->region = &top.io_mem_aw_bits_region;
-    return cwa;
-  }
-
-  static AXIChannelWriteData *dataPort(VVTAShell &top) {
-    AXIChannelWriteData *cwd = new AXIChannelWriteData;
-    cwd->data_bits = 64;
-    cwd->id_bits = 8;
-    cwd->user_bits = 1;
-
-    cwd->ready = &top.io_mem_w_ready;
-    cwd->valid = &top.io_mem_w_valid;
-    cwd->data = &top.io_mem_w_bits_data;
-    cwd->strb = &top.io_mem_w_bits_strb;
-    cwd->last = &top.io_mem_w_bits_last;
-    cwd->id = &top.io_mem_w_bits_id;
-    cwd->user = &top.io_mem_w_bits_user;
-    return cwd;
-  }
-
-  static AXIChannelWriteResp *respPort(VVTAShell &top) {
-    AXIChannelWriteResp *cwr = new AXIChannelWriteResp;
-    cwr->id_bits = 8;
-    cwr->user_bits = 1;
-
-    cwr->ready = &top.io_mem_b_ready;
-    cwr->valid = &top.io_mem_b_valid;
-    cwr->resp = &top.io_mem_b_bits_resp;
-    cwr->id = &top.io_mem_b_bits_id;
-    cwr->user = &top.io_mem_b_bits_user;
-
-    return cwr;
-  }
-
-  virtual void doWrite(AXIReadOp *op) override {
-    volatile union SimbricksProtoPcieD2H *msg = d2h_alloc();
-    if (!msg)
-      throw "dma read alloc failed";
-
-    volatile struct SimbricksProtoPcieD2HWrite *write = &msg->write;
-    write->req_id = (uintptr_t)op;
-    write->offset = op->addr;
-    write->len = op->len;
-    memcpy((void *)write->data, op->buf, op->len);
-    SimbricksPcieIfD2HOutSend(&nicif.pcie, msg,
-                              SIMBRICKS_PROTO_PCIE_D2H_MSG_WRITE);
-
-    writeDone(op);
-  }
- public:
-  MemWriter(VVTAShell &top)
-    : AXIWriter(*addrPort(top), *dataPort(top), *respPort(top))
-  {
-  }
-};
-
-
-static void mmio_done(MMIOOp *op) {
-  if (!op->isWrite || !op->isPosted) {
-    volatile union SimbricksProtoPcieD2H *msg = d2h_alloc();
-    volatile struct SimbricksProtoPcieD2HReadcomp *rc;
-    volatile struct SimbricksProtoPcieD2HWritecomp *wc;
+    volatile struct SimbricksProtoPcieD2HReadcomp *readcomp;
+    volatile struct SimbricksProtoPcieD2HWritecomp *writecomp;
 
     if (!msg)
       throw "completion alloc failed";
 
-    if (op->isWrite) {
-      wc = &msg->writecomp;
-      wc->req_id = op->id;
+    if (mmio_op->isWrite) {
+      writecomp = &msg->writecomp;
+      writecomp->req_id = mmio_op->id;
 
       SimbricksPcieIfD2HOutSend(&nicif.pcie, msg,
                                 SIMBRICKS_PROTO_PCIE_D2H_MSG_WRITECOMP);
-    } else {
-      rc = &msg->readcomp;
-      memcpy((void *)rc->data, &op->value, op->len);
-      rc->req_id = op->id;
+    } else if (!mmio_op->isWrite) {
+      readcomp = &msg->readcomp;
+      // NOLINTNEXTLINE(google-readability-casting)
+      memcpy((void *)readcomp->data, &mmio_op->value, mmio_op->len);
+      readcomp->req_id = mmio_op->id;
 
       SimbricksPcieIfD2HOutSend(&nicif.pcie, msg,
                                 SIMBRICKS_PROTO_PCIE_D2H_MSG_READCOMP);
     }
   }
 
-  delete op;
+  delete mmio_op;
 }
 
-#if 0
-std::set<DMAOp *> pci_dma_pending;
-
-void pci_dma_issue(DMAOp *op) {
-  volatile union SimbricksProtoPcieD2H *msg = d2h_alloc();
-  uint8_t ty;
-
-  if (!msg)
-    throw "completion alloc failed";
-
-  if (op->write) {
-    volatile struct SimbricksProtoPcieD2HWrite *write = &msg->write;
-    write->req_id = (uintptr_t)op;
-    write->offset = op->dma_addr;
-    write->len = op->len;
-
-    // TODO(antoinek): check DMA length
-    memcpy((void *)write->data, op->data, op->len);
-
-    SimbricksPcieIfD2HOutSend(&nicif.pcie, msg,
-                              SIMBRICKS_PROTO_PCIE_D2H_MSG_WRITE);
-  } else {
-    volatile struct SimbricksProtoPcieD2HRead *read = &msg->read;
-    read->req_id = (uintptr_t)op;
-    read->offset = op->dma_addr;
-    read->len = op->len;
-
-    SimbricksPcieIfD2HOutSend(&nicif.pcie, msg,
-                              SIMBRICKS_PROTO_PCIE_D2H_MSG_READ);
-  }
-
-  pci_dma_pending.insert(op);
-}
-
-#endif
-
-static void h2d_read(MMIOInterface &mmio,
-                     volatile struct SimbricksProtoPcieH2DRead *read) {
-  // std::cout << "got read " << read->offset << std::endl;
+void h2d_read(MMIOInterface &mmio,
+              volatile struct SimbricksProtoPcieH2DRead *read) {
+  // std::cout << "got read " << read->offset << "\n";
   if (read->bar == 0) {
     /*printf("read(bar=%u, off=%lu, len=%u) = %lu\n", read->bar, read->offset,
             read->len, val);*/
     mmio.issueRead(read->req_id, read->offset, read->len);
   } else if (read->bar == 2) {
     volatile union SimbricksProtoPcieD2H *msg = d2h_alloc();
-    volatile struct SimbricksProtoPcieD2HReadcomp *rc;
+    volatile struct SimbricksProtoPcieD2HReadcomp *readcomp;
 
     if (!msg)
       throw "completion alloc failed";
 
-    rc = &msg->readcomp;
-    memcpy((void *)rc->data, (uint8_t *) dev_mem + read->offset, read->len);
-    rc->req_id = read->req_id;
+    readcomp = &msg->readcomp;
+    // NOLINTNEXTLINE(google-readability-casting)
+    memcpy((void *)readcomp->data,
+           static_cast<uint8_t *>(dev_mem) + read->offset, read->len);
+    readcomp->req_id = read->req_id;
 
     SimbricksPcieIfD2HOutSend(&nicif.pcie, msg,
                               SIMBRICKS_PROTO_PCIE_D2H_MSG_READCOMP);
@@ -563,28 +397,30 @@ static void h2d_read(MMIOInterface &mmio,
   }
 }
 
-static void h2d_write(MMIOInterface &mmio,
-                      volatile struct SimbricksProtoPcieH2DWrite *write,
-                      bool isPosted) {
-  // std::cout << "got write " << write->offset << " = " << val << std::endl;
+void h2d_write(MMIOInterface &mmio,
+               volatile struct SimbricksProtoPcieH2DWrite *write,
+               bool isPosted) {
+  // std::cout << "got write " << write->offset << " = " << val << "\n";
 
   if (write->bar == 0) {
     uint64_t val = 0;
+    // NOLINTNEXTLINE(google-readability-casting)
     memcpy(&val, (void *)write->data, write->len);
     mmio.issueWrite(write->req_id, write->offset, write->len, val, isPosted);
   } else if (write->bar == 2) {
-    memcpy((uint8_t *) dev_mem + write->offset, (void *) write->data,
-      write->len);
-    
+    // NOLINTNEXTLINE(google-readability-casting)
+    memcpy(static_cast<uint8_t *>(dev_mem) + write->offset, (void *)write->data,
+           write->len);
+
     if (isPosted) {
       return;
     }
 
     volatile union SimbricksProtoPcieD2H *msg = d2h_alloc();
-    volatile struct SimbricksProtoPcieD2HWritecomp *wc;
+    volatile struct SimbricksProtoPcieD2HWritecomp *writecomp;
 
-    wc = &msg->writecomp;
-    wc->req_id = write->req_id;
+    writecomp = &msg->writecomp;
+    writecomp->req_id = write->req_id;
 
     SimbricksPcieIfD2HOutSend(&nicif.pcie, msg,
                               SIMBRICKS_PROTO_PCIE_D2H_MSG_WRITECOMP);
@@ -593,29 +429,31 @@ static void h2d_write(MMIOInterface &mmio,
   }
 }
 
-static void h2d_readcomp(volatile struct SimbricksProtoPcieH2DReadcomp *rc) {
-  AXIReadOp *op = (AXIReadOp *)(uintptr_t)rc->req_id;
-  memcpy(op->buf, (void *)rc->data, op->len);
+void h2d_readcomp(volatile struct SimbricksProtoPcieH2DReadcomp *readcomp) {
+  VTAMemReader::AXIOperationT *axi_op =
+      // NOLINTNEXTLINE(performance-no-int-to-ptr)
+      reinterpret_cast<VTAMemReader::AXIOperationT *>(readcomp->req_id);
+  memcpy(axi_op->buf, const_cast<uint8_t *>(readcomp->data), axi_op->len);
 
-  mem_control_reader->readDone(op);
+  mem_control_reader->readDone(axi_op);
 }
 
-static void h2d_writecomp(volatile struct SimbricksProtoPcieH2DWritecomp *wc) {
-  //std::cout << "dma write completed" << std::endl;
+void h2d_writecomp(volatile struct SimbricksProtoPcieH2DWritecomp *writecomp) {
+  // std::cout << "dma write completed" << "\n";
 }
 
-static void poll_h2d(MMIOInterface &mmio) {
+void poll_h2d(MMIOInterface &mmio) {
   volatile union SimbricksProtoPcieH2D *msg =
       SimbricksPcieIfH2DInPoll(&nicif.pcie, main_time);
-  uint16_t t;
+  uint16_t type;
 
-  if (msg == NULL)
+  if (msg == nullptr)
     return;
 
-  t = SimbricksPcieIfH2DInType(&nicif.pcie, msg);
+  type = SimbricksPcieIfH2DInType(&nicif.pcie, msg);
 
-  // std::cerr << "poll_h2d: polled type=" << (int) t << std::endl;
-  switch (t) {
+  // std::cerr << "poll_h2d: polled type=" << (int) t << "\n";
+  switch (type) {
     case SIMBRICKS_PROTO_PCIE_H2D_MSG_READ:
       h2d_read(mmio, &msg->read);
       break;
@@ -637,39 +475,78 @@ static void poll_h2d(MMIOInterface &mmio) {
       break;
 
     case SIMBRICKS_PROTO_PCIE_H2D_MSG_DEVCTRL:
-      break;
-
     case SIMBRICKS_PROTO_MSG_TYPE_SYNC:
       break;
 
     case SIMBRICKS_PROTO_MSG_TYPE_TERMINATE:
-      std::cerr << "poll_h2d: peer terminated" << std::endl;
+      std::cerr << "poll_h2d: peer terminated"
+                << "\n";
       terminated = true;
       break;
 
     default:
-      std::cerr << "poll_h2d: unsupported type=" << t << std::endl;
+      std::cerr << "poll_h2d: unsupported type=" << type << "\n";
   }
 
   SimbricksPcieIfH2DInDone(&nicif.pcie, msg);
 }
 
-static volatile union SimbricksProtoPcieD2H *d2h_alloc(void) {
+volatile union SimbricksProtoPcieD2H *d2h_alloc() {
   return SimbricksPcieIfD2HOutAlloc(&nicif.pcie, main_time);
 }
 
+}  // namespace
+
+void VTAMemReader::doRead(AXIOperationT *axi_op) {
+  volatile union SimbricksProtoPcieD2H *msg = d2h_alloc();
+  if (!msg)
+    throw "dma read alloc failed";
+
+  volatile struct SimbricksProtoPcieD2HRead *read = &msg->read;
+  // NOLINTNEXTLINE(google-readability-casting)
+  read->req_id = (uintptr_t)axi_op;
+  read->offset = axi_op->addr;
+  read->len = axi_op->len;
+
+  assert(SimbricksPcieIfH2DOutMsgLen(&nicif.pcie) -
+                 sizeof(SimbricksProtoPcieH2DReadcomp) >=
+             axi_op->len &&
+         "Read response can't fit the required number of bytes");
+
+  SimbricksPcieIfD2HOutSend(&nicif.pcie, msg,
+                            SIMBRICKS_PROTO_PCIE_D2H_MSG_READ);
+}
+
+void VTAMemWriter::doWrite(AXIOperationT *axi_op) {
+  volatile union SimbricksProtoPcieD2H *msg = d2h_alloc();
+  if (!msg)
+    throw "dma read alloc failed";
+
+  volatile struct SimbricksProtoPcieD2HWrite *write = &msg->write;
+  // NOLINTNEXTLINE(google-readability-casting)
+  write->req_id = (uintptr_t)axi_op;
+  write->offset = axi_op->addr;
+  write->len = axi_op->len;
+
+  assert(SimbricksPcieIfD2HOutMsgLen(&nicif.pcie) -
+                 sizeof(SimbricksProtoPcieD2HWrite) >=
+             axi_op->len &&
+         "Write message can't fit the required number of bytes");
+
+  // NOLINTNEXTLINE(google-readability-casting)
+  memcpy((void *)write->data, axi_op->buf, axi_op->len);
+  SimbricksPcieIfD2HOutSend(&nicif.pcie, msg,
+                            SIMBRICKS_PROTO_PCIE_D2H_MSG_WRITE);
+
+  writeDone(axi_op);
+}
 
 int main(int argc, char *argv[]) {
-  char *vargs[2] = {argv[0], NULL};
-  Verilated::commandArgs(1, vargs);
-  struct SimbricksBaseIfParams pcieParams;
-#ifdef TRACE_ENABLED
-  Verilated::traceEverOn(true);
-#endif
+  struct SimbricksBaseIfParams pcie_params;
 
-  SimbricksPcieIfDefaultParams(&pcieParams);
+  SimbricksPcieIfDefaultParams(&pcie_params);
 
-  if (argc < 3 && argc > 8) {
+  if (argc < 3 || argc > 8) {
     fprintf(stderr,
             "Usage: vta_simbricks PCI-SOCKET SHM [START-TICK] "
             "[SYNC-PERIOD] [PCI-LATENCY] [CLOCK-FREQ-MHZ] [DEV-MEM-SIZE-MB]\n");
@@ -678,33 +555,33 @@ int main(int argc, char *argv[]) {
   if (argc >= 4)
     main_time = strtoull(argv[3], NULL, 0);
   if (argc >= 5)
-    pcieParams.sync_interval = strtoull(argv[4], NULL, 0) * 1000ULL;
+    pcie_params.sync_interval = strtoull(argv[4], NULL, 0) * 1000ULL;
   if (argc >= 6)
-    pcieParams.link_latency = strtoull(argv[5], NULL, 0) * 1000ULL;
+    pcie_params.link_latency = strtoull(argv[5], NULL, 0) * 1000ULL;
   if (argc >= 7)
     clock_period = 1000000ULL / strtoull(argv[6], NULL, 0);
   if (argc >= 8)
     dev_mem_size = strtoull(argv[7], NULL, 0) * 1024 * 1024;
 
-  struct SimbricksProtoPcieDevIntro di;
-  memset(&di, 0, sizeof(di));
+  struct SimbricksProtoPcieDevIntro dev_intro;
+  memset(&dev_intro, 0, sizeof(dev_intro));
 
-  di.bars[0].len = 1 << 24;
-  di.bars[0].flags = SIMBRICKS_PROTO_PCIE_BAR_64;
+  dev_intro.bars[0].len = 1 << 24;
+  dev_intro.bars[0].flags = SIMBRICKS_PROTO_PCIE_BAR_64;
 
-  di.bars[2].len = dev_mem_size;
-  di.bars[2].flags = SIMBRICKS_PROTO_PCIE_BAR_64;
+  dev_intro.bars[2].len = dev_mem_size;
+  dev_intro.bars[2].flags = SIMBRICKS_PROTO_PCIE_BAR_64;
 
-  di.pci_vendor_id = 0xdead;
-  di.pci_device_id = 0xbeef;
-  di.pci_class = 0x40;
-  di.pci_subclass = 0x00;
-  di.pci_revision = 0x00;
-  di.pci_msi_nvecs = 32;
+  dev_intro.pci_vendor_id = 0xdead;
+  dev_intro.pci_device_id = 0xbeef;
+  dev_intro.pci_class = 0x40;
+  dev_intro.pci_subclass = 0x00;
+  dev_intro.pci_revision = 0x00;
+  dev_intro.pci_msi_nvecs = 32;
 
-  pcieParams.sock_path = argv[1];
+  pcie_params.sock_path = argv[1];
 
-  if (SimbricksNicIfInit(&nicif, argv[2], nullptr, &pcieParams, &di)) {
+  if (SimbricksNicIfInit(&nicif, argv[2], nullptr, &pcie_params, &dev_intro)) {
     return EXIT_FAILURE;
   }
   int sync_pci = SimbricksBaseIfSyncEnabled(&nicif.pcie.base);
@@ -714,80 +591,96 @@ int main(int argc, char *argv[]) {
 
   dev_mem = new uint8_t[dev_mem_size];
 
-  VVTAShell *top = new VVTAShell;
-  shell = top;
+  /* initialize verilated model */
+  // vcontext = new VerilatedContext{};
+  shell = new VVTAShell;
+
 #ifdef TRACE_ENABLED
+  Verilated::traceEverOn(true);
+  // vcontext->traceEverOn(true);
   trace = new VerilatedVcdC;
-  top->trace(trace, 99);
+  shell->trace(trace, 99);
   trace->open("debug.vcd");
 #endif
 
-  MMIOInterface mmio(*top);
-  mem_control_reader = new MemReader(*top);
-  MemWriter mem_control_writer(*top);
+  MMIOInterface mmio{*shell};
+  mem_control_reader = new VTAMemReader{*shell};
+  VTAMemWriter mem_control_writer{*shell};
 
-  reset_inputs(top);
-  top->reset = 1;
-  top->eval();
+  reset_inputs(*shell);
+  shell->reset = 1;
+  shell->clock = 0;
+  shell->eval();
+  // vcontext->timeInc(1);
 
   /* raising edge */
-  top->clock = !top->clock;
-  top->eval();
+  shell->clock = !shell->clock;
+  shell->eval();
+  // vcontext->timeInc(1);
 
-  top->reset = 0;
+  shell->reset = 0;
 
+  /* main simulation loop */
   while (!exiting) {
     int done;
     do {
       done = 1;
       if (SimbricksPcieIfD2HOutSync(&nicif.pcie, main_time) < 0) {
         std::cerr << "warn: SimbricksPcieIfD2HOutSync failed (t=" << main_time
-                  << ")" << std::endl;
+                  << ")"
+                  << "\n";
         done = 0;
       }
       if (SimbricksNetIfOutSync(&nicif.net, main_time) < 0) {
         std::cerr << "warn: SimbricksNetIfOutSync failed (t=" << main_time
-                  << ")" << std::endl;
+                  << ")"
+                  << "\n";
         done = 0;
       }
     } while (!done);
 
     do {
       poll_h2d(mmio);
-    } while (
-        !exiting &&
-        ((sync_pci &&
-          SimbricksPcieIfH2DInTimestamp(&nicif.pcie) <= main_time)));
+    } while (!exiting && ((sync_pci && SimbricksPcieIfH2DInTimestamp(
+                                           &nicif.pcie) <= main_time)));
 
     /* falling edge */
-    top->clock = !top->clock;
+    shell->clock = !shell->clock;
     main_time += clock_period / 2;
-    top->eval();
+    shell->eval();
+    // vcontext->timeInc(1);
 #ifdef TRACE_ENABLED
     trace->dump(main_time);
 #endif
 
     mmio.step();
-    mem_control_writer.step();
-    mem_control_reader->step();
+    mem_control_writer.step(main_time);
+    mem_control_reader->step(main_time);
 
     /* raising edge */
-    top->clock = !top->clock;
+    shell->clock = !shell->clock;
     main_time += clock_period / 2;
 
-    top->eval();
+    shell->eval();
+    // vcontext->timeInc(1);
 #ifdef TRACE_ENABLED
     trace->dump(main_time);
 #endif
   }
-  report_outputs(top);
-  std::cout << std::endl << std::endl << "main_time:" << main_time << std::endl;
+  report_outputs(*shell);
+  std::cout << "\n"
+            << "\n"
+            << "main_time:" << main_time << "\n";
 
 #ifdef TRACE_ENABLED
   trace->dump(main_time + 1);
   trace->close();
+  delete trace;
 #endif
-  top->final();
-  delete top;
+  shell->final();
+  delete shell;
+  // delete vcontext;
   return 0;
 }
+
+// #pragma GCC pop_options
