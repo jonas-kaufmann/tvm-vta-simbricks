@@ -63,7 +63,7 @@ import vta.shell._
 
 
  */
-class TensorLoadWideVME(tensorType: String = "none", debug: Boolean = false)(
+class TensorLoadWideVME(tensorType: String = "none", debug: Boolean = true)(
     implicit p: Parameters)
     extends Module {
   val tp = new TensorParams(tensorType)
@@ -326,7 +326,7 @@ class TensorLoadWideVME(tensorType: String = "none", debug: Boolean = false)(
 // Different transactions are identified by atag change
 // SAME DESTINATION SUBSEQUENT REQUESTS IN ONE INSTRUCTION LEADS TO UNDEFINED BEHAVIOR
 //----------------------------------------------------------------------------
-class ReadVMEDataWide(tensorType: String = "none", debug: Boolean = false)(
+class ReadVMEDataWide(tensorType: String = "none", debug: Boolean = true)(
     implicit p: Parameters)
     extends Module {
   val tp = new TensorParams(tensorType)
@@ -461,7 +461,7 @@ class ReadVMEDataWide(tensorType: String = "none", debug: Boolean = false)(
 // transaction TAG is a data block offset in scratchpad
 // Different transactions are identified by atag change
 // SAME DESTINATION SUBSEQUENT REQUESTS IN ONE INSTRUCTION LEADS TO UNDEFINED BEHAVIOR
-class GenVMECmdWide(tensorType: String = "none", debug: Boolean = false)(
+class GenVMECmdWide(tensorType: String = "none", debug: Boolean = true)(
     implicit p: Parameters)
     extends Module {
   val tp = new TensorParams(tensorType)
@@ -726,7 +726,7 @@ class GenVMECmdWide(tensorType: String = "none", debug: Boolean = false)(
   io.done := commandsDone
 }
 
-class GenVMECmdWideTL(tensorType: String = "none", debug: Boolean = false)(
+class GenVMECmdWideTL(tensorType: String = "none", debug: Boolean = true)(
     implicit p: Parameters)
     extends Module {
   val tp = new TensorParams(tensorType)

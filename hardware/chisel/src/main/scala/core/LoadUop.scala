@@ -52,7 +52,7 @@ class UopClient(implicit p: Parameters) extends Bundle {
  *
  * Top wrapper of load uop implementations.
  */
-class LoadUopTop(debug: Boolean = false)(implicit val p: Parameters) extends Module {
+class LoadUopTop(debug: Boolean = true)(implicit val p: Parameters) extends Module {
   val mp = p(ShellKey).memParams
   val io = IO(new Bundle {
     val start = Input(Bool())

@@ -321,7 +321,7 @@ abstract class TensorGemmIfc(implicit p: Parameters) extends Module {
  * Also, TensorGemmSimple uses the reset field in the Gemm instruction to
  * clear or zero-out the acc-scratchpad locations based on the micro-ops.
  */
-class TensorGemmSimple(debug: Boolean = false)(implicit p: Parameters) extends TensorGemmIfc {
+class TensorGemmSimple(debug: Boolean = true)(implicit p: Parameters) extends TensorGemmIfc {
 
   require(p(CoreKey).blockOutFactor == 1,
     "-F- Split GEMM not supported. Use TensorGemmPipelinedSplit or set blockOutFactor to 1")

@@ -36,7 +36,7 @@ import vta.shell._
  * managed by TensorPadCtrl. The TensorDataCtrl is in charge of
  * handling the way tensors are stored on the scratchpads.
  */
-class TensorLoad(tensorType: String = "none", debug: Boolean = false)(
+class TensorLoad(tensorType: String = "none", debug: Boolean = true)(
     implicit p: Parameters)
     extends Module {
   val tp = new TensorParams(tensorType)

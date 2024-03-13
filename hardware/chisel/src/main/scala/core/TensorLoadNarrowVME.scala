@@ -34,7 +34,7 @@ import vta.shell._
  * scratchpads (SRAM). Also, there is support for zero padding, while
  * doing the load.
  */
-class TensorLoadNarrowVME(tensorType: String = "none", debug: Boolean = false)(
+class TensorLoadNarrowVME(tensorType: String = "none", debug: Boolean = true)(
     implicit p: Parameters)
     extends Module {
   val tp = new TensorParams(tensorType)
@@ -313,7 +313,7 @@ class TensorLoadNarrowVME(tensorType: String = "none", debug: Boolean = false)(
 
 //Fill algorithm fills row by row from TOP then sides, then BOT
 //----------------------------------------------------------------------------
-class ZeroPadding(tensorType: String = "none", debug: Boolean = false)(
+class ZeroPadding(tensorType: String = "none", debug: Boolean = true)(
     implicit p: Parameters)
     extends Module {
   val tp = new TensorParams(tensorType)
@@ -469,7 +469,7 @@ class ZeroPadding(tensorType: String = "none", debug: Boolean = false)(
 // Different transactions are identified by tag change
 // SAME DESTINATION SUBSEQUENT REQUESTS IN ONE INSTRUCTION LEADS TO UNDEFINED BEHAVIOR
 //----------------------------------------------------------------------------
-class ReadVMEData(tensorType: String = "none", debug: Boolean = false)(
+class ReadVMEData(tensorType: String = "none", debug: Boolean = true)(
     implicit p: Parameters)
     extends Module {
   val tp = new TensorParams(tensorType)
@@ -546,7 +546,7 @@ class ReadVMEData(tensorType: String = "none", debug: Boolean = false)(
 // transaction TAG is a data block offset in scratchpad
 // Different transactions are identified by tag change
 // SAME DESTINATION SUBSEQUENT REQUESTS IN ONE INSTRUCTION LEADS TO UNDEFINED BEHAVIOR
-class GenVMECmd(tensorType: String = "none", debug: Boolean = false)(
+class GenVMECmd(tensorType: String = "none", debug: Boolean = true)(
     implicit p: Parameters)
     extends Module {
   val tp = new TensorParams(tensorType)

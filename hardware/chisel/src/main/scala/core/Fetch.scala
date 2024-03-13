@@ -40,7 +40,7 @@ import vta.util._
  * more than one instruction at the time. Finally, the instruction queue is
  * sized (entries_q), depending on the maximum burst allowed in the memory.
  */
-class Fetch(debug: Boolean = false)(implicit p: Parameters) extends Module {
+class Fetch(debug: Boolean = true)(implicit p: Parameters) extends Module {
   val vp = p(ShellKey).vcrParams
   val mp = p(ShellKey).memParams
   val io = IO(new Bundle {
