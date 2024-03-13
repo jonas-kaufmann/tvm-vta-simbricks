@@ -45,9 +45,6 @@ extern "C" {
 
 #include "vta_simbricks.hh"
 
-// #pragma GCC push_options
-// #pragma GCC optimize("O0")
-
 namespace {
 uint64_t clock_period = 10 * 1000ULL;  // 10ns -> 100MHz
 size_t dev_mem_size = 1024UL * 1024 * 1024;
@@ -60,7 +57,6 @@ struct SimbricksNicIf nicif {};
 VTAMemReader *mem_control_reader;
 void *dev_mem;
 
-// VerilatedContext *vcontext;
 VVTAShell *shell;
 #ifdef TRACE_ENABLED
 VerilatedVcdC *trace;
@@ -592,12 +588,10 @@ int main(int argc, char *argv[]) {
   dev_mem = new uint8_t[dev_mem_size];
 
   /* initialize verilated model */
-  // vcontext = new VerilatedContext{};
   shell = new VVTAShell;
 
 #ifdef TRACE_ENABLED
   Verilated::traceEverOn(true);
-  // vcontext->traceEverOn(true);
   trace = new VerilatedVcdC;
   shell->trace(trace, 99);
   trace->open("debug.vcd");
@@ -607,17 +601,19 @@ int main(int argc, char *argv[]) {
   mem_control_reader = new VTAMemReader{*shell};
   VTAMemWriter mem_control_writer{*shell};
 
+  // reset HW
   reset_inputs(*shell);
-  shell->reset = 1;
-  shell->clock = 0;
-  shell->eval();
-  // vcontext->timeInc(1);
-
-  /* raising edge */
-  shell->clock = !shell->clock;
-  shell->eval();
-  // vcontext->timeInc(1);
-
+  for (int i = 0; i < 10; i++) {
+    shell->reset = 1;
+    shell->clock = 0;
+    main_time += clock_period / 2;
+    shell->eval();
+    trace->dump(main_time);
+    shell->clock = 1;
+    main_time += clock_period / 2;
+    shell->eval();
+    trace->dump(main_time);
+  }
   shell->reset = 0;
 
   /* main simulation loop */
@@ -645,24 +641,21 @@ int main(int argc, char *argv[]) {
                                            &nicif.pcie) <= main_time)));
 
     /* falling edge */
-    shell->clock = !shell->clock;
+    shell->clock = 0;
     main_time += clock_period / 2;
     shell->eval();
-    // vcontext->timeInc(1);
 #ifdef TRACE_ENABLED
     trace->dump(main_time);
 #endif
 
-    mmio.step();
-    mem_control_writer.step(main_time);
-    mem_control_reader->step(main_time);
-
     /* raising edge */
-    shell->clock = !shell->clock;
+    shell->clock = 1;
     main_time += clock_period / 2;
 
     shell->eval();
-    // vcontext->timeInc(1);
+    mmio.step();
+    mem_control_writer.step(main_time);
+    mem_control_reader->step(main_time);
 #ifdef TRACE_ENABLED
     trace->dump(main_time);
 #endif
@@ -679,8 +672,5 @@ int main(int argc, char *argv[]) {
 #endif
   shell->final();
   delete shell;
-  // delete vcontext;
   return 0;
 }
-
-// #pragma GCC pop_options
