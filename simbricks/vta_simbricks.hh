@@ -31,9 +31,9 @@ class VTAMemReader : public AXIReader {
  public:
   explicit VTAMemReader(VVTAShell &top) : AXIReader{} {
     // set up address port
-    addrP_.addr_bits = 64;
+    addrP_.addr_bits = 32;
     addrP_.id_bits = 8;
-    addrP_.user_bits = 1;
+    addrP_.user_bits = 5;
 
     addrP_.ready = &top.io_mem_ar_ready;
     addrP_.valid = &top.io_mem_ar_valid;
@@ -52,7 +52,7 @@ class VTAMemReader : public AXIReader {
     // set up data port
     dataP_.data_bits = 64;
     dataP_.id_bits = 8;
-    dataP_.user_bits = 1;
+    dataP_.user_bits = 5;
 
     dataP_.ready = &top.io_mem_r_ready;
     dataP_.valid = &top.io_mem_r_valid;
@@ -70,9 +70,9 @@ class VTAMemWriter : public AXIWriter {
  public:
   explicit VTAMemWriter(VVTAShell &top) : AXIWriter{} {
     // set up address port
-    addrP_.addr_bits = 64;
+    addrP_.addr_bits = 32;
     addrP_.id_bits = 8;
-    addrP_.user_bits = 1;
+    addrP_.user_bits = 5;
 
     addrP_.ready = &top.io_mem_aw_ready;
     addrP_.valid = &top.io_mem_aw_valid;
@@ -91,7 +91,7 @@ class VTAMemWriter : public AXIWriter {
     // set up data port
     dataP_.data_bits = 64;
     dataP_.id_bits = 8;
-    dataP_.user_bits = 1;
+    dataP_.user_bits = 5;
 
     dataP_.ready = &top.io_mem_w_ready;
     dataP_.valid = &top.io_mem_w_valid;
@@ -101,7 +101,7 @@ class VTAMemWriter : public AXIWriter {
 
     // set up response port
     respP_.id_bits = 8;
-    respP_.user_bits = 1;
+    respP_.user_bits = 5;
 
     respP_.ready = &top.io_mem_b_ready;
     respP_.valid = &top.io_mem_b_valid;
