@@ -54,7 +54,7 @@ bool terminated = false;
 uint64_t main_time = 0;
 struct SimbricksNicIf nicif {};
 
-VTAMemReader *mem_control_reader;
+VTAMemReader *mem_reader;
 void *dev_mem;
 
 VVTAShell *shell;
@@ -175,132 +175,124 @@ struct MMIOOp {
 
 void mmio_done(MMIOOp *mmio_op);
 
-class MMIOInterface {
+/* The implementation assumes that the RTL code for the current cycle has
+ * already evaluated. */
+class AxiLiteManager {
  protected:
   VVTAShell &top_;
   std::deque<MMIOOp *> queue_{};
   MMIOOp *rCur_ = nullptr;
   MMIOOp *wCur_ = nullptr;
 
+  /* ackon read address channel */
   bool rAAck_ = false;
+  /* ack on read data channel */
   bool rDAck_ = false;
+  /* ack on write address channel */
   bool wAAck_ = false;
+  /* ack on write data channel */
   bool wDAck_ = false;
+  /* ack on write response channel */
   bool wBAck_ = false;
 
  public:
-  explicit MMIOInterface(VVTAShell &top) : top_(top) {
+  explicit AxiLiteManager(VVTAShell &top) : top_(top) {
   }
 
   void step() {
+    /* drive these signals with constant values */
+    top_.io_host_w_bits_strb = 0xF;
+    top_.io_host_b_ready = 1;
+    top_.io_host_r_ready = 1;
+
+    /* work on active read transaction */
     if (rCur_) {
-      /* work on active read operation */
-      if (rDAck_) {
-        /* read fully completed */
+      /* The ordering of if statements here is intentional to comply with the
+      AXI standard, which dictates that ar_valid has to remain valid for 1 cycle
+      after ar_ready has been asserted. */
+      if (rAAck_) {
+        top_.io_host_ar_valid = 0;
+      }
+
+      if (rAAck_ && rDAck_) {
 #ifdef MMIO_DEBUG
         std::cout << main_time << " MMIO: completed AXI read op=" << rCur_
                   << " val=" << rCur_->value << "\n";
-        // report_outputs(&top);
 #endif
-        top_.io_host_r_ready = 0;
         mmio_done(rCur_);
         rCur_ = nullptr;
-      } else if (top_.io_host_r_valid) {
-        assert(rAAck_);
-        rCur_->value = top_.io_host_r_bits_data;
-        rDAck_ = true;  // need to delay with ready high for a full cycle for
-                        // chisel code to fully register
+        rAAck_ = false;
+        rDAck_ = false;
       }
 
-      if (top_.io_host_ar_valid && (top_.io_host_ar_ready || rAAck_)) {
-        /* read addr handshake is complete */
-#ifdef MMIO_DEBUG
-        std::cout << main_time
-                  << " MMIO: AXI read addr handshake done op=" << rCur_ << "\n";
-        // report_outputs(&top);
-#endif
-        top_.io_host_ar_valid = 0;
+      if (top_.io_host_ar_ready) {
         rAAck_ = true;
       }
-    } else if (wCur_) {
-      /* work on active write operation */
+      if (top_.io_host_r_valid) {
+        rCur_->value = top_.io_host_r_bits_data;
+        rDAck_ = false;
+      }
+    }
+    /* work on active write transaction */
+    else if (wCur_) {
+      /* The ordering of if statements here is intentional to comply with the
+      AXI standard, which dictates that aw_valid and r_valid has to remain valid
+      for 1 cycle after aw_ready and w_ready have been asserted, respectively.
+      */
+      if (wAAck_) {
+        top_.io_host_aw_valid = 0;
+      }
+      if (wDAck_) {
+        top_.io_host_w_valid = 0;
+      }
 
-      if (wBAck_) {
-        /* write fully completed */
+      if (wAAck_ && wDAck_ && wBAck_) {
 #ifdef MMIO_DEBUG
-        std::cout << main_time << " MMIO: completed AXI wriste op=" << wCur_
+        std::cout << main_time << " MMIO: completed AXI write op=" << wCur_
                   << "\n";
-        // report_outputs(&top);
 #endif
-        top_.io_host_b_ready = 0;
         mmio_done(wCur_);
         wCur_ = nullptr;
-      } else if (top_.io_host_b_valid) {
-        assert(wAAck_ && wDAck_);
-        wBAck_ = true;  // need to delay with ready high for a full cycle for
-                        // chisel code to fully register
+        wAAck_ = false;
+        wDAck_ = false;
       }
 
-      if (top_.io_host_w_valid && (top_.io_host_w_ready || wDAck_)) {
-        /* write data handshake is complete */
-#ifdef MMIO_DEBUG
-        std::cout << main_time
-                  << " MMIO: AXI write data handshake done op=" << wCur_
-                  << "\n";
-        // report_outputs(&top);
-#endif
-        top_.io_host_w_valid = 0;
-        wDAck_ = true;
-      }
-
-      if (top_.io_host_aw_valid && (top_.io_host_aw_ready || wAAck_)) {
-        /* write addr handshake is complete */
-#ifdef MMIO_DEBUG
-        std::cout << main_time
-                  << " MMIO: AXI write addr handshake done op=" << wCur_
-                  << "\n";
-        // report_outputs(&top);
-#endif
-        top_.io_host_aw_valid = 0;
-        wAAck_ = true;
-
-        wDAck_ = top_.io_host_w_ready;
-        top_.io_host_w_valid = 1;
-      }
-
-    } else if (/*!top.clk &&*/ !queue_.empty()) {
-      /* issue new operation */
+      wAAck_ = top_.io_host_aw_ready ? true : wAAck_;
+      wDAck_ = top_.io_host_w_ready ? true : wDAck_;
+      wBAck_ = top_.io_host_b_ready ? true : wBAck_;
+    }
+    /* issue new operation */
+    else if (!queue_.empty()) {
       MMIOOp *mmio_op = queue_.front();
 #ifdef MMIO_DEBUG
       std::cout << main_time << " MMIO: issuing new op on axi op=" << mmio_op
                 << "\n";
-      // report_outputs(&top);
 #endif
       queue_.pop_front();
       if (!mmio_op->isWrite) {
         /* issue new read */
         rCur_ = mmio_op;
+        assert(mmio_op->len == sizeof(top_.io_host_r_bits_data) &&
+               "To simplify implementation, reads currently need to have the "
+               "same size as the AXI Lite read data channel.");
 
         top_.io_host_ar_bits_addr = rCur_->addr;
-        rAAck_ = top_.io_host_ar_ready;
         top_.io_host_ar_valid = 1;
-        rDAck_ = false;
-        top_.io_host_r_ready = 1;
+        rAAck_ = top_.io_host_ar_ready;
       } else {
         /* issue new write */
         wCur_ = mmio_op;
+        assert(mmio_op->len == sizeof(top_.io_host_w_bits_data) &&
+               "To simplify implementation, writes currently need to have the "
+               "same size as the AXI Lite write data channel.");
 
         top_.io_host_aw_bits_addr = wCur_->addr;
-        wAAck_ = top_.io_host_aw_ready;
         top_.io_host_aw_valid = 1;
+        wAAck_ = top_.io_host_aw_ready;
 
         top_.io_host_w_bits_data = wCur_->value;
-        top_.io_host_w_bits_strb = 0xf;
-        wDAck_ = false;
-        top_.io_host_w_valid = 0;
-
-        wBAck_ = false;
-        top_.io_host_b_ready = 1;
+        top_.io_host_w_valid = 1;
+        wDAck_ = top_.io_host_w_ready;
       }
     }
   }
@@ -366,7 +358,7 @@ void mmio_done(MMIOOp *mmio_op) {
   delete mmio_op;
 }
 
-void h2d_read(MMIOInterface &mmio,
+void h2d_read(AxiLiteManager &mmio,
               volatile struct SimbricksProtoPcieH2DRead *read) {
   // std::cout << "got read " << read->offset << "\n";
   if (read->bar == 0) {
@@ -393,7 +385,7 @@ void h2d_read(MMIOInterface &mmio,
   }
 }
 
-void h2d_write(MMIOInterface &mmio,
+void h2d_write(AxiLiteManager &mmio,
                volatile struct SimbricksProtoPcieH2DWrite *write,
                bool isPosted) {
   // std::cout << "got write " << write->offset << " = " << val << "\n";
@@ -431,14 +423,14 @@ void h2d_readcomp(volatile struct SimbricksProtoPcieH2DReadcomp *readcomp) {
       reinterpret_cast<VTAMemReader::AXIOperationT *>(readcomp->req_id);
   memcpy(axi_op->buf, const_cast<uint8_t *>(readcomp->data), axi_op->len);
 
-  mem_control_reader->readDone(axi_op);
+  mem_reader->readDone(axi_op);
 }
 
 void h2d_writecomp(volatile struct SimbricksProtoPcieH2DWritecomp *writecomp) {
   // std::cout << "dma write completed" << "\n";
 }
 
-void poll_h2d(MMIOInterface &mmio) {
+void poll_h2d(AxiLiteManager &mmio) {
   volatile union SimbricksProtoPcieH2D *msg =
       SimbricksPcieIfH2DInPoll(&nicif.pcie, main_time);
   uint16_t type;
@@ -597,9 +589,9 @@ int main(int argc, char *argv[]) {
   trace->open("debug.vcd");
 #endif
 
-  MMIOInterface mmio{*shell};
-  mem_control_reader = new VTAMemReader{*shell};
-  VTAMemWriter mem_control_writer{*shell};
+  AxiLiteManager mmio{*shell};
+  mem_reader = new VTAMemReader{*shell};
+  VTAMemWriter mem_writer{*shell};
 
   // reset HW
   reset_inputs(*shell);
@@ -651,11 +643,10 @@ int main(int argc, char *argv[]) {
     /* raising edge */
     shell->clock = 1;
     main_time += clock_period / 2;
-
     shell->eval();
     mmio.step();
-    mem_control_writer.step(main_time);
-    mem_control_reader->step(main_time);
+    mem_writer.step(main_time);
+    mem_reader->step(main_time);
 #ifdef TRACE_ENABLED
     trace->dump(main_time);
 #endif
