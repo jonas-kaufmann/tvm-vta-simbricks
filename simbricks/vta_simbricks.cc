@@ -97,71 +97,8 @@ void reset_inputs(VVTAShell &top) {
   top.io_mem_r_bits_user = 0;
 }
 
-void report_output(const char *label, uint64_t val) {
-  if (val == 0)
-    return;
-
-  std::cout << "    " << label << " = " << val << "\n";
-}
-
-void report_outputs(const VVTAShell &top) {
-  report_output("in:  clock", top.clock);
-  report_output("in:  reset", top.reset);
-
-  report_output("in:  io_host_aw_valid", top.io_host_aw_valid);
-  report_output("out: io_host_aw_ready", top.io_host_aw_ready);
-  report_output("in:  io_host_aw_bits_addr", top.io_host_aw_bits_addr);
-  report_output("in:  io_host_w_valid", top.io_host_w_valid);
-  report_output("out: io_host_w_ready", top.io_host_w_ready);
-  report_output("in:  io_host_w_bits_data", top.io_host_w_bits_data);
-  report_output("in:  io_host_w_bits_strb", top.io_host_w_bits_strb);
-  report_output("in:  io_host_b_ready", top.io_host_b_ready);
-  report_output("out: io_host_b_valid", top.io_host_b_valid);
-  report_output("out: io_host_b_bits_resp", top.io_host_b_bits_resp);
-  report_output("in:  io_host_ar_valid", top.io_host_ar_valid);
-  report_output("out: io_host_ar_ready", top.io_host_ar_ready);
-  report_output("in:  io_host_ar_bits_addr", top.io_host_ar_bits_addr);
-  report_output("in:  io_host_r_ready", top.io_host_r_ready);
-  report_output("out: io_host_r_valid", top.io_host_r_valid);
-  report_output("out: io_host_r_bits_data", top.io_host_r_bits_data);
-  report_output("out: io_host_r_bits_resp", top.io_host_r_bits_resp);
-
-  report_output("in:  io_mem_aw_ready", top.io_mem_aw_ready);
-  report_output("out: io_mem_aw_valid", top.io_mem_aw_valid);
-  report_output("out: io_mem_aw_bits_addr", top.io_mem_aw_bits_addr);
-  report_output("out: io_mem_aw_bits_id", top.io_mem_aw_bits_id);
-  report_output("out: io_mem_aw_bits_user", top.io_mem_aw_bits_user);
-  report_output("out: io_mem_aw_bits_len", top.io_mem_aw_bits_len);
-  report_output("out: io_mem_aw_bits_size", top.io_mem_aw_bits_size);
-  report_output("out: io_mem_aw_bits_burst", top.io_mem_aw_bits_burst);
-  report_output("out: io_mem_aw_bits_lock", top.io_mem_aw_bits_lock);
-  report_output("out: io_mem_aw_bits_cache", top.io_mem_aw_bits_cache);
-  report_output("out: io_mem_aw_bits_prot", top.io_mem_aw_bits_prot);
-  report_output("out: io_mem_aw_bits_qos", top.io_mem_aw_bits_qos);
-  report_output("out: io_mem_aw_bits_region", top.io_mem_aw_bits_region);
-  report_output("in:  io_mem_w_ready", top.io_mem_w_ready);
-  report_output("out: io_mem_w_valid", top.io_mem_w_valid);
-  report_output("out: io_mem_w_bits_data", top.io_mem_w_bits_data);
-  report_output("out: io_mem_w_bits_strb", top.io_mem_w_bits_strb);
-  report_output("out: io_mem_w_bits_last", top.io_mem_w_bits_last);
-  report_output("out: io_mem_w_bits_id", top.io_mem_w_bits_id);
-  report_output("out: io_mem_w_bits_user", top.io_mem_w_bits_user);
-  report_output("in:  io_mem_b_valid", top.io_mem_b_valid);
-  report_output("in:  io_mem_b_bits_resp", top.io_mem_b_bits_resp);
-  report_output("in:  io_mem_b_bits_id", top.io_mem_b_bits_id);
-  report_output("in:  io_mem_b_bits_user", top.io_mem_b_bits_user);
-  report_output("in:  io_mem_ar_ready", top.io_mem_ar_ready);
-  report_output("in:  io_mem_r_valid", top.io_mem_r_valid);
-  report_output("in:  io_mem_r_bits_data", top.io_mem_r_bits_data);
-  report_output("in:  io_mem_r_bits_resp", top.io_mem_r_bits_resp);
-  report_output("in:  io_mem_r_bits_last", top.io_mem_r_bits_last);
-  report_output("in:  io_mem_r_bits_id", top.io_mem_r_bits_id);
-  report_output("in:  io_mem_r_bits_user", top.io_mem_r_bits_user);
-}
-
 void sigusr1_handler(int dummy) {
   fprintf(stderr, "main_time = %lu\n", main_time);
-  report_outputs(*shell);
 }
 
 struct MMIOOp {
@@ -651,10 +588,6 @@ int main(int argc, char *argv[]) {
     trace->dump(main_time);
 #endif
   }
-  report_outputs(*shell);
-  std::cout << "\n"
-            << "\n"
-            << "main_time:" << main_time << "\n";
 
 #ifdef TRACE_ENABLED
   trace->dump(main_time + 1);
