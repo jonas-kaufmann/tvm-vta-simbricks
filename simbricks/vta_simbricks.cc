@@ -112,8 +112,6 @@ struct MMIOOp {
 
 void mmio_done(MMIOOp *mmio_op);
 
-/* The implementation assumes that the RTL code for the current cycle has
- * already evaluated. */
 class AxiLiteManager {
  protected:
   VVTAShell &top_;
@@ -121,16 +119,12 @@ class AxiLiteManager {
   MMIOOp *rCur_ = nullptr;
   MMIOOp *wCur_ = nullptr;
 
-  /* ackon read address channel */
+  /* ack on read address channel */
   bool rAAck_ = false;
-  /* ack on read data channel */
-  bool rDAck_ = false;
   /* ack on write address channel */
   bool wAAck_ = false;
   /* ack on write data channel */
   bool wDAck_ = false;
-  /* ack on write response channel */
-  bool wBAck_ = false;
 
  public:
   explicit AxiLiteManager(VVTAShell &top) : top_(top) {
@@ -144,38 +138,33 @@ class AxiLiteManager {
 
     /* work on active read transaction */
     if (rCur_) {
-      /* The ordering of if statements here is intentional to comply with the
-      AXI standard, which dictates that ar_valid has to remain valid for 1 cycle
-      after ar_ready has been asserted. */
+      if (top_.io_host_ar_ready) {
+        rAAck_ = true;
+      }
       if (rAAck_) {
         top_.io_host_ar_valid = 0;
       }
 
-      if (rAAck_ && rDAck_) {
+      if (rAAck_ && top_.io_host_r_valid) {
 #ifdef MMIO_DEBUG
         std::cout << main_time << " MMIO: completed AXI read op=" << rCur_
                   << " val=" << rCur_->value << "\n";
 #endif
+        rCur_->value = top_.io_host_r_bits_data;
         mmio_done(rCur_);
         rCur_ = nullptr;
         rAAck_ = false;
-        rDAck_ = false;
-      }
-
-      if (top_.io_host_ar_ready) {
-        rAAck_ = true;
-      }
-      if (top_.io_host_r_valid) {
-        rCur_->value = top_.io_host_r_bits_data;
-        rDAck_ = false;
       }
     }
     /* work on active write transaction */
     else if (wCur_) {
-      /* The ordering of if statements here is intentional to comply with the
-      AXI standard, which dictates that aw_valid and r_valid has to remain valid
-      for 1 cycle after aw_ready and w_ready have been asserted, respectively.
-      */
+      if (top_.io_host_aw_ready) {
+        wAAck_ = true;
+      }
+      if (top_.io_host_w_ready) {
+        wDAck_ = true;
+      }
+
       if (wAAck_) {
         top_.io_host_aw_valid = 0;
       }
@@ -183,7 +172,7 @@ class AxiLiteManager {
         top_.io_host_w_valid = 0;
       }
 
-      if (wAAck_ && wDAck_ && wBAck_) {
+      if (wAAck_ && wDAck_ && top_.io_host_b_valid) {
 #ifdef MMIO_DEBUG
         std::cout << main_time << " MMIO: completed AXI write op=" << wCur_
                   << "\n";
@@ -193,10 +182,6 @@ class AxiLiteManager {
         wAAck_ = false;
         wDAck_ = false;
       }
-
-      wAAck_ = top_.io_host_aw_ready ? true : wAAck_;
-      wDAck_ = top_.io_host_w_ready ? true : wDAck_;
-      wBAck_ = top_.io_host_b_ready ? true : wBAck_;
     }
     /* issue new operation */
     else if (!queue_.empty()) {
@@ -580,10 +565,10 @@ int main(int argc, char *argv[]) {
     /* raising edge */
     shell->clock = 1;
     main_time += clock_period / 2;
-    shell->eval();
     mmio.step();
     mem_writer.step(main_time);
     mem_reader->step(main_time);
+    shell->eval();
 #ifdef TRACE_ENABLED
     trace->dump(main_time);
 #endif
