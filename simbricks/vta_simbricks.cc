@@ -30,8 +30,8 @@
 #include "VVTAShell.h"
 #include "simbricks/pcie/proto.h"
 
-#define TRACE_ENABLED
-// #define MMIO_DEBUG
+// #define TRACE_ENABLED 
+// #define MMIO_DEBUG 1
 
 #include <iostream>
 #ifdef TRACE_ENABLED
@@ -126,97 +126,160 @@ class AxiLiteManager {
   /* ack on write data channel */
   bool wDAck_ = false;
 
+  uint64_t tmp[20] = {0};
+  bool tmp_active[20] = {0};
+
  public:
   explicit AxiLiteManager(VVTAShell &top) : top_(top) {
   }
 
+  // all the signals we saw in the step function should be right before
+  // the rising edge, all the updates we do is only seen after the rising edge.
+  // so the updates we do here is like <= operator in verilog.  
+#define RegWrite(idx, signal, val) tmp[idx] = val;tmp_active[idx]=true;
+#define ResetTmp() for(int i=0;i<20;i++){tmp_active[i]=false;}
   void step() {
-    /* drive these signals with constant values */
-    top_.io_host_w_bits_strb = 0xF;
-    top_.io_host_b_ready = 1;
-    top_.io_host_r_ready = 1;
-
-    /* work on active read transaction */
+    ResetTmp();
     if (rCur_) {
-      if (top_.io_host_ar_ready) {
+      /* work on active read operation */
+      if (top_.io_host_ar_valid && top_.io_host_ar_ready ) {
+        /* read addr handshake is complete */
+#ifdef MMIO_DEBUG
+        std::cout << main_time
+                  << " MMIO: AXI read addr handshake done op=" << rCur_ << "\n";
+        // report_outputs(&top);
+#endif
+        RegWrite(0, top_.io_host_ar_valid, 0);
         rAAck_ = true;
       }
-      if (rAAck_) {
-        top_.io_host_ar_valid = 0;
-      }
-
-      if (rAAck_ && top_.io_host_r_valid) {
+    }
+    
+    if (rAAck_ && top_.io_host_r_valid && top_.io_host_r_ready ) {
+        assert(rAAck_);
+        rCur_->value = top_.io_host_r_bits_data;
+   
 #ifdef MMIO_DEBUG
         std::cout << main_time << " MMIO: completed AXI read op=" << rCur_
                   << " val=" << rCur_->value << "\n";
+        // report_outputs(&top);
 #endif
-        rCur_->value = top_.io_host_r_bits_data;
+        RegWrite(1, top_.io_host_r_ready, 0);
         mmio_done(rCur_);
         rCur_ = nullptr;
-        rAAck_ = false;
-      }
-    }
-    /* work on active write transaction */
-    else if (wCur_) {
-      if (top_.io_host_aw_ready) {
-        wAAck_ = true;
-      }
-      if (top_.io_host_w_ready) {
-        wDAck_ = true;
       }
 
-      if (wAAck_) {
-        top_.io_host_aw_valid = 0;
-      }
-      if (wDAck_) {
-        top_.io_host_w_valid = 0;
-      }
-
-      if (wAAck_ && wDAck_ && top_.io_host_b_valid) {
+    if (wCur_) {
+      /* work on active write operation */
+#ifdef MMIO_DEBUG
+        std::cout << main_time << " MMIO: response write op=" << wCur_
+                  << " bvalid" << top_.io_host_b_valid 
+                  << " bready" << top_.io_host_b_ready 
+                  << "\n";
+        // report_outputs(&top);
+#endif
+    if (top_.io_host_b_valid && top_.io_host_b_ready) {
+        assert(wAAck_ && wDAck_);
+        // RegWrite(top_.io_host_b_ready, 0);
+        mmio_done(wCur_);
+        wCur_ = nullptr;
 #ifdef MMIO_DEBUG
         std::cout << main_time << " MMIO: completed AXI write op=" << wCur_
                   << "\n";
+        // report_outputs(&top);
 #endif
-        mmio_done(wCur_);
-        wCur_ = nullptr;
-        wAAck_ = false;
-        wDAck_ = false;
       }
-    }
-    /* issue new operation */
-    else if (!queue_.empty()) {
-      MMIOOp *mmio_op = queue_.front();
+
+      if (top_.io_host_aw_valid && top_.io_host_aw_ready ) {
+        /* write addr handshake is complete */
 #ifdef MMIO_DEBUG
-      std::cout << main_time << " MMIO: issuing new op on axi op=" << mmio_op
-                << "\n";
+        std::cout << main_time
+                  << " MMIO: AXI write addr handshake done op=" << wCur_
+                  << "\n";
+        // report_outputs(&top);
 #endif
-      queue_.pop_front();
-      if (!mmio_op->isWrite) {
+        RegWrite(2, top_.io_host_aw_valid, 0);
+        wAAck_ = true;
+        if (!wDAck_){
+          RegWrite(3, top_.io_host_w_valid, 1);
+        }
+      }
+      
+      if ( wAAck_ && top_.io_host_w_valid && top_.io_host_w_ready ) {
+        /* write data handshake is complete */
+#ifdef MMIO_DEBUG
+        std::cout << main_time
+                  << " MMIO: AXI write data handshake done op=" << wCur_
+                  << "\n";
+        // report_outputs(&top);
+#endif
+        RegWrite(4, top_.io_host_w_valid, 0);
+        wDAck_ = true;
+        RegWrite(5, top_.io_host_b_ready, 1);
+
+      }
+
+    } 
+    
+    if (/*!top.clk &&*/ !queue_.empty() ) {
+      /* issue new operation */
+      MMIOOp *mmio_op = queue_.front();
+      if(!mmio_op->isWrite && !rCur_){
+#ifdef MMIO_DEBUG
+        std::cout << main_time << " MMIO: issuing new read op on axi op=" << mmio_op
+                  << "\n";
+#endif
+        queue_.pop_front();
         /* issue new read */
         rCur_ = mmio_op;
-        assert(mmio_op->len == sizeof(top_.io_host_r_bits_data) &&
-               "To simplify implementation, reads currently need to have the "
-               "same size as the AXI Lite read data channel.");
 
-        top_.io_host_ar_bits_addr = rCur_->addr;
-        top_.io_host_ar_valid = 1;
-        rAAck_ = top_.io_host_ar_ready;
-      } else {
+        RegWrite(6, top_.io_host_ar_bits_addr, rCur_->addr);
+        rAAck_ = false;
+        RegWrite(7, top_.io_host_ar_valid, 1);
+        RegWrite(8, top_.io_host_r_ready, 1);
+      }
+    if (/*!top.clk &&*/mmio_op->isWrite && !wCur_) {
+
+#ifdef MMIO_DEBUG
+        std::cout << main_time << " MMIO: issuing new write op on axi op=" << mmio_op
+                  << "\n";
+#endif
+        queue_.pop_front();
         /* issue new write */
         wCur_ = mmio_op;
-        assert(mmio_op->len == sizeof(top_.io_host_w_bits_data) &&
-               "To simplify implementation, writes currently need to have the "
-               "same size as the AXI Lite write data channel.");
-
-        top_.io_host_aw_bits_addr = wCur_->addr;
-        top_.io_host_aw_valid = 1;
-        wAAck_ = top_.io_host_aw_ready;
-
-        top_.io_host_w_bits_data = wCur_->value;
-        top_.io_host_w_valid = 1;
-        wDAck_ = top_.io_host_w_ready;
+        //always @(posedge clk)
+        RegWrite(9, top_.io_host_aw_bits_addr, wCur_->addr);
+        // wAAck_ = top_.io_host_aw_ready;
+        RegWrite(10, top_.io_host_aw_valid, 1);
+        RegWrite(11, top_.io_host_w_bits_data, wCur_->value);
+        RegWrite(12, top_.io_host_w_bits_strb, 0xf);
+        wDAck_ = false;
+        wAAck_ = false;
+        // make it one
+        RegWrite(13, top_.io_host_w_valid, 1);
+        RegWrite(14, top_.io_host_b_ready, 0);
       }
     }
+  }
+
+  void step_apply(){
+
+#define RegApply(idx, signal) if(tmp_active[idx]==true) signal = tmp[idx]
+
+    RegApply(6, top_.io_host_ar_bits_addr);
+    RegApply(7, top_.io_host_ar_valid);
+    RegApply(8, top_.io_host_r_ready);
+    RegApply(9, top_.io_host_aw_bits_addr);
+    RegApply(10, top_.io_host_aw_valid);
+    RegApply(11, top_.io_host_w_bits_data);
+    RegApply(12, top_.io_host_w_bits_strb);
+    RegApply(13, top_.io_host_w_valid);
+    RegApply(14, top_.io_host_b_ready);
+    RegApply(0, top_.io_host_ar_valid);
+    RegApply(1, top_.io_host_r_ready);
+    RegApply(2, top_.io_host_aw_valid);
+    RegApply(3, top_.io_host_w_valid);
+    RegApply(4, top_.io_host_w_valid);
+    RegApply(5, top_.io_host_b_ready);
   }
 
   void issueRead(uint64_t req_id, uint64_t addr, size_t len) {
@@ -522,11 +585,15 @@ int main(int argc, char *argv[]) {
     shell->clock = 0;
     main_time += clock_period / 2;
     shell->eval();
+#ifdef TRACE_ENABLED
     trace->dump(main_time);
+#endif
     shell->clock = 1;
     main_time += clock_period / 2;
     shell->eval();
+#ifdef TRACE_ENABLED
     trace->dump(main_time);
+#endif
   }
   shell->reset = 0;
 
@@ -569,6 +636,9 @@ int main(int argc, char *argv[]) {
     mem_writer.step(main_time);
     mem_reader->step(main_time);
     shell->eval();
+    mmio.step_apply();
+    mem_reader->step_apply();
+    mem_writer.step_apply();
 #ifdef TRACE_ENABLED
     trace->dump(main_time);
 #endif
