@@ -23,93 +23,70 @@
  */
 #pragma once
 
-#include <simbricks/rtl/axi/axi.hh>
+#include <simbricks/rtl/axi/axi_subordinate.hh>
+#include <simbricks/rtl/axi/axil_manager.hh>
 
 #include "obj_dir/VVTAShell.h"
 
-class VTAMemReader : public AXIReader {
+#define AXIL_BYTES_DATA 4
+
+// handles DMA read requests
+using AXISubordinateReadT = simbricks::AXISubordinateRead<8, 1, 8, 64>;
+class VTAAXISubordinateRead : public AXISubordinateReadT {
  public:
-  explicit VTAMemReader(VVTAShell &top) : AXIReader{} {
-    // set up address port
-    addrP_.addr_bits = 32;
-    addrP_.id_bits = 8;
-    addrP_.user_bits = 5;
-
-    addrP_.ready = &top.io_mem_ar_ready;
-    addrP_.valid = &top.io_mem_ar_valid;
-    addrP_.addr = &top.io_mem_ar_bits_addr;
-    addrP_.id = &top.io_mem_ar_bits_id;
-    addrP_.user = &top.io_mem_ar_bits_user;
-    addrP_.len = &top.io_mem_ar_bits_len;
-    addrP_.size = &top.io_mem_ar_bits_size;
-    addrP_.burst = &top.io_mem_ar_bits_burst;
-    addrP_.lock = &top.io_mem_ar_bits_lock;
-    addrP_.cache = &top.io_mem_ar_bits_cache;
-    addrP_.prot = &top.io_mem_ar_bits_prot;
-    addrP_.qos = &top.io_mem_ar_bits_qos;
-    addrP_.region = &top.io_mem_ar_bits_region;
-
-    // set up data port
-    dataP_.data_bits = 64;
-    dataP_.id_bits = 8;
-    dataP_.user_bits = 5;
-
-    dataP_.ready = &top.io_mem_r_ready;
-    dataP_.valid = &top.io_mem_r_valid;
-    dataP_.data = &top.io_mem_r_bits_data;
-    dataP_.resp = &top.io_mem_r_bits_resp;
-    dataP_.last = &top.io_mem_r_bits_last;
-    dataP_.id = &top.io_mem_r_bits_id;
+  explicit VTAAXISubordinateRead(VVTAShell &top)
+      : AXISubordinateReadT(
+            reinterpret_cast<uint8_t *>(&top.io_mem_ar_bits_addr),
+            &top.io_mem_ar_bits_id, top.io_mem_ar_ready, top.io_mem_ar_valid,
+            top.io_mem_ar_bits_len, top.io_mem_ar_bits_size,
+            top.io_mem_ar_bits_burst,
+            reinterpret_cast<uint8_t *>(&top.io_mem_r_bits_data),
+            &top.io_mem_r_bits_id, top.io_mem_r_ready, top.io_mem_r_valid,
+            top.io_mem_r_bits_last) {
   }
 
- protected:
-  void doRead(AXIOperationT *axi_op) override;
+ private:
+  void do_read(const simbricks::AXIOperation &axi_op) final;
 };
 
-class VTAMemWriter : public AXIWriter {
+// handles DMA write requests
+using AXISubordinateWriteT = simbricks::AXISubordinateWrite<8, 1, 8, 64>;
+class VTAAXISubordinateWrite : public AXISubordinateWriteT {
  public:
-  explicit VTAMemWriter(VVTAShell &top) : AXIWriter{} {
-    // set up address port
-    addrP_.addr_bits = 32;
-    addrP_.id_bits = 8;
-    addrP_.user_bits = 5;
-
-    addrP_.ready = &top.io_mem_aw_ready;
-    addrP_.valid = &top.io_mem_aw_valid;
-    addrP_.addr = &top.io_mem_aw_bits_addr;
-    addrP_.id = &top.io_mem_aw_bits_id;
-    addrP_.user = &top.io_mem_aw_bits_user;
-    addrP_.len = &top.io_mem_aw_bits_len;
-    addrP_.size = &top.io_mem_aw_bits_size;
-    addrP_.burst = &top.io_mem_aw_bits_burst;
-    addrP_.lock = &top.io_mem_aw_bits_lock;
-    addrP_.cache = &top.io_mem_aw_bits_cache;
-    addrP_.prot = &top.io_mem_aw_bits_prot;
-    addrP_.qos = &top.io_mem_aw_bits_qos;
-    addrP_.region = &top.io_mem_aw_bits_region;
-
-    // set up data port
-    dataP_.data_bits = 64;
-    dataP_.id_bits = 8;
-    dataP_.user_bits = 5;
-
-    dataP_.ready = &top.io_mem_w_ready;
-    dataP_.valid = &top.io_mem_w_valid;
-    dataP_.data = &top.io_mem_w_bits_data;
-    dataP_.strb = &top.io_mem_w_bits_strb;
-    dataP_.last = &top.io_mem_w_bits_last;
-
-    // set up response port
-    respP_.id_bits = 8;
-    respP_.user_bits = 5;
-
-    respP_.ready = &top.io_mem_b_ready;
-    respP_.valid = &top.io_mem_b_valid;
-    respP_.resp = &top.io_mem_b_bits_resp;
-    respP_.id = &top.io_mem_b_bits_id;
-    respP_.user = &top.io_mem_b_bits_user;
+  explicit VTAAXISubordinateWrite(VVTAShell &top)
+      : AXISubordinateWriteT(
+            reinterpret_cast<uint8_t *>(&top.io_mem_aw_bits_addr),
+            &top.io_mem_aw_bits_id, top.io_mem_aw_ready, top.io_mem_aw_valid,
+            top.io_mem_aw_bits_len, top.io_mem_aw_bits_size,
+            top.io_mem_aw_bits_burst,
+            reinterpret_cast<uint8_t *>(&top.io_mem_w_bits_data),
+            top.io_mem_w_ready, top.io_mem_w_valid, top.io_mem_w_bits_strb,
+            top.io_mem_w_bits_last, &top.io_mem_b_bits_id, top.io_mem_b_ready,
+            top.io_mem_b_valid, top.io_mem_b_bits_resp) {
   }
 
- protected:
-  void doWrite(AXIOperationT *axi_op) override;
+ private:
+  void do_write(const simbricks::AXIOperation &axi_op) final;
+};
+
+// handles host to device register reads / writes
+using AXILManagerT = simbricks::AXILManager<2, AXIL_BYTES_DATA>;
+class VTAAXILManager : public AXILManagerT {
+ public:
+  explicit VTAAXILManager(VVTAShell &top)
+      : AXILManagerT(
+            reinterpret_cast<uint8_t *>(&top.io_host_ar_bits_addr),
+            top.io_host_ar_ready, top.io_host_ar_valid,
+            reinterpret_cast<uint8_t *>(&top.io_host_r_bits_data),
+            top.io_host_r_ready, top.io_host_r_valid, top.io_host_r_bits_resp,
+            reinterpret_cast<uint8_t *>(&top.io_host_aw_bits_addr),
+            top.io_host_aw_ready, top.io_host_aw_valid,
+            reinterpret_cast<uint8_t *>(&top.io_host_w_bits_data),
+            top.io_host_w_ready, top.io_host_w_valid, top.io_host_w_bits_strb,
+            top.io_host_b_ready, top.io_host_b_valid, top.io_host_b_bits_resp) {
+  }
+
+ private:
+  void read_done(simbricks::AXILOperationR &axi_op) final;
+  void write_done(simbricks::AXILOperationW &axi_op) final;
 };
