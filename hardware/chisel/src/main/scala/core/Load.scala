@@ -31,7 +31,7 @@ import vta.shell._
  * loading 1D and 2D tensors to scratchpads, so it can be used by
  * other modules such as Compute.
  */
-class Load(debug: Boolean = true)(implicit p: Parameters) extends Module {
+class Load(debug: Boolean = false)(implicit p: Parameters) extends Module {
   val mp = p(ShellKey).memParams
   val io = IO(new Bundle {
     val i_post = Input(Bool())

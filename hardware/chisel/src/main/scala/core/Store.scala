@@ -30,7 +30,7 @@ import vta.shell._
  * This module instantiate the TensorStore unit which is in charge
  * of storing 1D and 2D tensors to main memory.
  */
-class Store(debug: Boolean = true)(implicit p: Parameters) extends Module {
+class Store(debug: Boolean = false)(implicit p: Parameters) extends Module {
   val mp = p(ShellKey).memParams
   val io = IO(new Bundle {
     val i_post = Input(Bool())

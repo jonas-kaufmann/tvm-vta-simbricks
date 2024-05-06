@@ -97,7 +97,7 @@ class AluVector(implicit p: Parameters) extends Module {
   io.out.data.valid := valid.asUInt.andR
 }
 
-class TensorAluIndexGenerator(debug: Boolean = true)(implicit p: Parameters) extends Module {
+class TensorAluIndexGenerator(debug: Boolean = false)(implicit p: Parameters) extends Module {
   val cnt_o_width = (new AluDecode).lp_0.getWidth
   val cnt_i_width = (new AluDecode).lp_1.getWidth
 
@@ -193,7 +193,7 @@ class TensorAluIfc(implicit p: Parameters) extends Module {
   })
 }
 
-class TensorAluPipelined(debug: Boolean = true)(implicit p: Parameters) extends TensorAluIfc {
+class TensorAluPipelined(debug: Boolean = false)(implicit p: Parameters) extends TensorAluIfc {
   val stateBits = 2
   val inflightBits = 4
   val dataSplitFactor = p(CoreKey).blockOutFactor
@@ -397,7 +397,7 @@ class TensorAluPipelined(debug: Boolean = true)(implicit p: Parameters) extends 
  * from the acc-scratchpad and then they are written back the same
  * acc-scratchpad.
  */
-class TensorAluOrig(debug: Boolean = true)(implicit p: Parameters) extends TensorAluIfc {
+class TensorAluOrig(debug: Boolean = false)(implicit p: Parameters) extends TensorAluIfc {
   val sIdle :: sReadUop :: sComputeIdx :: sReadTensorA :: sReadTensorB :: sExe :: Nil =
     Enum(6)
   val state = RegInit(sIdle)
@@ -598,4 +598,4 @@ class TensorAluOrig(debug: Boolean = true)(implicit p: Parameters) extends Tenso
   }
 }
 
-class TensorAlu(debug: Boolean = true)(implicit p: Parameters) extends TensorAluPipelined(debug)
+class TensorAlu(debug: Boolean = false)(implicit p: Parameters) extends TensorAluPipelined(debug)

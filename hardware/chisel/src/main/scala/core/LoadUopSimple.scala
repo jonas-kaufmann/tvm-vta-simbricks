@@ -24,7 +24,7 @@ import chisel3.util._
 import vta.util.config._
 import vta.shell._
 
-class LoadUopSimple(debug: Boolean = true)(implicit val p: Parameters) extends Module {
+class LoadUopSimple(debug: Boolean = false)(implicit val p: Parameters) extends Module {
   val mp = p(ShellKey).memParams
   val io = IO(new Bundle {
     val start = Input(Bool())

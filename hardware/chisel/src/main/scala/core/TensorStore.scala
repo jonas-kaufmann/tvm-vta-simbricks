@@ -28,7 +28,7 @@ import vta.shell._
  *
  * Store 1D and 2D tensors from out-scratchpad (SRAM) to main memory (DRAM).
  */
-class TensorStore(tensorType: String = "none", debug: Boolean = true)(
+class TensorStore(tensorType: String = "none", debug: Boolean = false)(
     implicit p: Parameters)
     extends Module {
   val tp = new TensorParams(tensorType)
