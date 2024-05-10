@@ -49,7 +49,6 @@ extern "C" {
 #include "vta_simbricks.hh"
 
 uint64_t clock_period = 10 * 1000ULL;  // 10ns -> 100MHz
-size_t dev_mem_size = 1024UL * 1024 * 1024;
 
 volatile int exiting = 0;
 bool terminated = false;
@@ -60,7 +59,6 @@ std::unique_ptr<VVTAShell> shell{};
 std::unique_ptr<VTAAXISubordinateRead> dma_read{};
 std::unique_ptr<VTAAXISubordinateWrite> dma_write{};
 std::unique_ptr<VTAAXILManager> reg_read_write{};
-std::unique_ptr<uint8_t[]> dev_mem;
 
 volatile union SimbricksProtoPcieD2H *d2h_alloc();
 
@@ -141,18 +139,6 @@ void VTAAXILManager::write_done(simbricks::AXILOperationW &axi_op) {
 void h2d_read(volatile struct SimbricksProtoPcieH2DRead &read) {
   if (read.bar == 0) {
     reg_read_write->issue_read(read.req_id, read.offset);
-  } else if (read.bar == 2) {
-    volatile union SimbricksProtoPcieD2H *msg = d2h_alloc();
-    if (!msg) {
-      throw "h2d_read() completion alloc failed";
-    }
-
-    volatile struct SimbricksProtoPcieD2HReadcomp &readcomp = msg->readcomp;
-    memcpy(const_cast<uint8_t *>(readcomp.data), dev_mem.get() + read.offset,
-           read.len);
-    readcomp.req_id = read.req_id;
-    SimbricksPcieIfD2HOutSend(&nicif.pcie, msg,
-                              SIMBRICKS_PROTO_PCIE_D2H_MSG_READCOMP);
   } else {
     throw "h2d_read() unexpected bar";
   }
@@ -167,9 +153,6 @@ void h2d_write(volatile struct SimbricksProtoPcieH2DWrite &write,
     uint64_t data = 0;
     memcpy(&data, const_cast<uint8_t *>(write.data), AXIL_BYTES_DATA);
     reg_read_write->issue_write(write.req_id, write.offset, data, isPosted);
-  } else if (write.bar == 2) {
-    memcpy(dev_mem.get() + write.offset, const_cast<uint8_t *>(write.data),
-           write.len);
   } else {
     throw "h2d_write() unexpected bar";
   }
@@ -238,10 +221,10 @@ int main(int argc, char *argv[]) {
 
   SimbricksPcieIfDefaultParams(&pcie_params);
 
-  if (argc < 3 || argc > 8) {
+  if (argc < 3 || argc > 7) {
     fprintf(stderr,
             "Usage: vta_simbricks PCI-SOCKET SHM [START-TICK] "
-            "[SYNC-PERIOD] [PCI-LATENCY] [CLOCK-FREQ-MHZ] [DEV-MEM-SIZE-MB]\n");
+            "[SYNC-PERIOD] [PCI-LATENCY] [CLOCK-FREQ-MHZ]\n");
     return EXIT_FAILURE;
   }
   if (argc >= 4)
@@ -252,24 +235,18 @@ int main(int argc, char *argv[]) {
     pcie_params.link_latency = strtoull(argv[5], NULL, 0) * 1000ULL;
   if (argc >= 7)
     clock_period = 1000000ULL / strtoull(argv[6], NULL, 0);
-  if (argc >= 8)
-    dev_mem_size = strtoull(argv[7], NULL, 0) * 1024 * 1024;
 
   struct SimbricksProtoPcieDevIntro dev_intro;
   memset(&dev_intro, 0, sizeof(dev_intro));
 
-  dev_intro.bars[0].len = 1 << 24;
-  dev_intro.bars[0].flags = SIMBRICKS_PROTO_PCIE_BAR_64;
-
-  dev_intro.bars[2].len = dev_mem_size;
-  dev_intro.bars[2].flags = SIMBRICKS_PROTO_PCIE_BAR_64;
+  dev_intro.bars[0].len = 4096;
+  dev_intro.bars[0].flags = 0;
 
   dev_intro.pci_vendor_id = 0xdead;
   dev_intro.pci_device_id = 0xbeef;
   dev_intro.pci_class = 0x40;
   dev_intro.pci_subclass = 0x00;
   dev_intro.pci_revision = 0x00;
-  dev_intro.pci_msi_nvecs = 32;
 
   pcie_params.sock_path = argv[1];
 
@@ -280,8 +257,6 @@ int main(int argc, char *argv[]) {
 
   signal(SIGINT, sigint_handler);
   signal(SIGUSR1, sigusr1_handler);
-
-  dev_mem = std::make_unique<uint8_t[]>(dev_mem_size);
 
   /* initialize verilated model */
   shell = std::make_unique<VVTAShell>();
