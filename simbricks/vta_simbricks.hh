@@ -23,8 +23,8 @@
  */
 #pragma once
 
-#include <simbricks/rtl/axi/axi_subordinate.hh>
-#include <simbricks/rtl/axi/axil_manager.hh>
+#include <simbricks/axi/axi_subordinate.hh>
+#include <simbricks/axi/axil_manager.hh>
 
 #include "obj_dir/VVTAShell.h"
 

@@ -10,7 +10,7 @@ vsrcs := ../build/chisel/VTA.DefaultVTAConfig.sv
 VERILATOR ?= verilator
 CFLAGS := -DVTA_SIMBRICKS -I$(abspath ../../../../lib) -Wall -O2 -fno-omit-frame-pointer
 CFLAGS += -std=c++17
-LDFLAGS := -L$(abspath ../../../../lib/simbricks/nicif) -L$(abspath ../../../../lib/simbricks/rtl/axi) -L$(abspath ../../../../lib)
+LDFLAGS := -L$(abspath ../../../../lib/simbricks/nicif) -L$(abspath ../../../../lib)
 VFLAGS := --cc -O3 --trace
 VFLAGS += +define+RANDOMIZE_GARBAGE_ASSIGN
 VFLAGS += +define+RANDOMIZE_REG_INIT
@@ -29,7 +29,7 @@ $(verilator_src): $(vsrcs)
 	    -CFLAGS "$(CFLAGS)" \
 	    --top-module VTAShell \
 	    --Mdir $(verilator_dir) \
-	    -LDFLAGS "$(LDFLAGS) -lnicif -lsimbricks -lverilator_axi" \
+	    -LDFLAGS "$(LDFLAGS) -lnicif -lsimbricks" \
 		"-I$(CHISEL_BUILD_DIR)" \
 	    $(vsrcs) --exe $(abspath $(srcs))
 
