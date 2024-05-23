@@ -31,7 +31,7 @@
 #define AXIL_BYTES_DATA 4
 
 // handles DMA read requests
-using AXISubordinateReadT = simbricks::AXISubordinateRead<8, 1, 8, 64>;
+using AXISubordinateReadT = simbricks::AXISubordinateRead<8, 1, 8, 16>;
 class VTAAXISubordinateRead : public AXISubordinateReadT {
  public:
   explicit VTAAXISubordinateRead(VVTAShell &top)
@@ -50,7 +50,7 @@ class VTAAXISubordinateRead : public AXISubordinateReadT {
 };
 
 // handles DMA write requests
-using AXISubordinateWriteT = simbricks::AXISubordinateWrite<8, 1, 8, 64>;
+using AXISubordinateWriteT = simbricks::AXISubordinateWrite<8, 1, 8, 16>;
 class VTAAXISubordinateWrite : public AXISubordinateWriteT {
  public:
   explicit VTAAXISubordinateWrite(VVTAShell &top)
