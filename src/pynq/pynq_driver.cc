@@ -142,6 +142,7 @@ class VTADevice {
     unsigned t, flag = 0;
     for (t = 0; t < wait_cycles; ++t) {
       flag = VTAReadMappedReg(vta_handle_, 0x00);
+      std::cout << "Run() flag=0x" << std::hex << flag << "\n";
       if (flag == 0x2) break;
       std::this_thread::yield();
     }
