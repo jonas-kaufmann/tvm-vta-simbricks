@@ -21,15 +21,25 @@
  */
 
 #include <vta/driver.h>
+#include <iostream>
 #include <thread>
 #include <time.h>
 #include "pynq_driver.h"
 
+#define DEBUG_PRINTS
+
 
 void* VTAMemAlloc(size_t size, int cached) {
+  #ifdef DEBUG_PRINTS
+  std::cout << "VTAMemAlloc() enter" << std::endl;
+  #endif
   assert(size <= VTA_MAX_XFER);
   // Rely on the pynq-specific cma library
-  return cma_alloc(size, cached);
+  void *a = cma_alloc(size, cached);
+  #ifdef DEBUG_PRINTS
+  std::cout << "VTAMemAlloc() leave" << std::endl;
+  #endif
+  return a;
 }
 
 void VTAMemFree(void* buf) {
@@ -162,6 +172,9 @@ int VTADeviceRun(VTADeviceHandle handle,
                  vta_phy_addr_t insn_phy_addr,
                  uint32_t insn_count,
                  uint32_t wait_cycles) {
+  #ifdef DEBUG_PRINTS
+  std::cout << "VTADeviceRun()" << std::endl;
+  #endif
   return static_cast<VTADevice*>(handle)->Run(
       insn_phy_addr, insn_count, wait_cycles);
 }
