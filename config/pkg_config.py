@@ -159,10 +159,10 @@ class PkgConfig(object):
             self.fpga_family = "zynq-ultrascale+"
             self.fpga_board = None
             self.fpga_board_rev = None
-            self.fpga_freq = 333
+            self.fpga_freq = 150
             self.fpga_per = 2
             self.fpga_log_axi_bus_width = 7
-            self.axi_prot_bits = '010'
+            self.axi_prot_bits = '000'
             # IP register address map
             self.ip_reg_map_range = "0x1000"
             self.fetch_base_addr = "0xA0000000"
@@ -216,7 +216,7 @@ class PkgConfig(object):
             self.compute_base_addr = "0x43C02000"
             self.store_base_addr = "0x43C03000"
         # Set coherence settings
-        coherent = True
+        coherent = False
         if coherent:
             self.axi_cache_bits = '1111'
             self.coherent = True
