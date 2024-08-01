@@ -80,6 +80,11 @@ void *VTAMapRegister(uint32_t addr) {
   uint32_t virt_offset = addr - virt_base;
   // Open file and mmap
   uint32_t mmap_file = open("/dev/mem", O_RDWR|O_SYNC);
+  #ifdef DEBUG_PRINTS
+  std::cout << "VTAMapRegister(0x" << std::hex << addr << ") addr=0x" << addr
+            << " virt_base=0x" << virt_base << " virt_offset=" << virt_offset
+            << " VTA_IP_REG_MAP_RANGE=" << VTA_IP_REG_MAP_RANGE << std::endl;
+#endif
   return mmap(NULL,
               (VTA_IP_REG_MAP_RANGE + virt_offset),
               PROT_READ|PROT_WRITE,
