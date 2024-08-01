@@ -80,10 +80,10 @@ void *VTAMapRegister(uint32_t addr) {
   uint32_t virt_offset = addr - virt_base;
   // Open file and mmap
   uint32_t mmap_file = open("/dev/mem", O_RDWR|O_SYNC);
-  #ifdef DEBUG_PRINTS
+#ifdef DEBUG_PRINTS
   std::cout << "VTAMapRegister(0x" << std::hex << addr << ") addr=0x" << addr
-            << " virt_base=0x" << virt_base << " virt_offset=" << virt_offset
-            << " VTA_IP_REG_MAP_RANGE=" << VTA_IP_REG_MAP_RANGE << std::endl;
+            << " virt_base=0x" << virt_base << " virt_offset=0x" << virt_offset
+            << " VTA_IP_REG_MAP_RANGE=0x" << VTA_IP_REG_MAP_RANGE << std::endl;
 #endif
   return mmap(NULL,
               (VTA_IP_REG_MAP_RANGE + virt_offset),
@@ -147,6 +147,7 @@ class VTADevice {
     nanosleep(&ts, &ts);
 
     // Loop until the VTA is done
+    std::cout << "Run() now waiting for VTA to finish..." << std::endl;
     unsigned t, flag = 0;
     for (t = 0; t < wait_cycles; ++t) {
       flag = VTAReadMappedReg(vta_compute_handle_, VTA_COMPUTE_DONE_RD_OFFSET);
