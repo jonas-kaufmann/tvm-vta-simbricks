@@ -220,6 +220,8 @@ class PkgConfig(object):
         if coherent:
             self.axi_cache_bits = '1111'
             self.coherent = True
+        else:
+            self.axi_cache_bits = '0000'
 
         # Define IP memory mapped registers offsets.
         # In HLS 0x00-0x0C is reserved for block-level I/O protocol.
