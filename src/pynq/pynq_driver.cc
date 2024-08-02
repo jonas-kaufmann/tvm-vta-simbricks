@@ -26,7 +26,7 @@
 #include <time.h>
 #include "pynq_driver.h"
 
-#define DEBUG_PRINTS
+// #define DEBUG_PRINTS
 
 
 void* VTAMemAlloc(size_t size, int cached) {
@@ -138,11 +138,12 @@ class VTADevice {
     nanosleep(&ts, &ts);
 
     // Loop until the VTA is done
+    #ifdef DEBUG_PRINTS
     std::cout << "Run() now waiting for VTA to finish..." << std::endl;
+    #endif
     unsigned t, flag = 0;
     for (t = 0; t < wait_cycles; ++t) {
       flag = VTAReadMappedReg(vta_handle_, 0x00);
-      std::cout << "Run() flag=0x" << std::hex << flag << "\n";
       if (flag == 0x2) break;
       std::this_thread::yield();
     }
