@@ -32,7 +32,7 @@
 #include "VVTAShell.h"
 #include "simbricks/pcie/proto.h"
 
-#define TRACE_ENABLED
+// #define TRACE_ENABLED
 
 #include <cstdlib>
 #include <iostream>
