@@ -21,8 +21,8 @@
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-#define AXI_R_DEBUG 0
-#define AXI_W_DEBUG 0
+// #define AXI_R_DEBUG
+// #define AXI_W_DEBUG
 
 #include <signal.h>
 #include <verilated.h>
