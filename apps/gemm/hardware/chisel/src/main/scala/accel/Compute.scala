@@ -26,7 +26,7 @@ import vta.core._
 import vta.util.config._
 import vta.shell._
 
-class TestConfig extends Config(new CoreConfig ++ new PynqConfig)
+class TestConfig extends Config(new CoreConfig_1x16 ++ new PynqConfig)
 /** Compute
   *
   * Bit Slice GEMM:

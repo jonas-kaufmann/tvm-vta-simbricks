@@ -27,13 +27,118 @@ import vta.util.config._
  * be eventually filled out with class configurations that can be
  * mixed/matched with Shell configurations for different backends.
  */
-class CoreConfig extends Config((site, here, up) => {
+class CoreConfig_1x16 extends Config((site, here, up) => {
   case CoreKey =>
     CoreParams(
       batch = 1,
       blockOut = 16,
       blockOutFactor = 1,
       blockIn = 16,
+      inpBits = 8,
+      wgtBits = 8,
+      uopBits = 32,
+      accBits = 32,
+      outBits = 8,
+      uopMemDepth = 2048,
+      inpMemDepth = 2048,
+      wgtMemDepth = 1024,
+      accMemDepth = 2048,
+      outMemDepth = 2048,
+      instQueueEntries = 512
+    )
+})
+
+class CoreConfig_4x16 extends Config((site, here, up) => {
+  case CoreKey =>
+    CoreParams(
+      batch = 4,
+      blockOut = 16,
+      blockOutFactor = 1,
+      blockIn = 16,
+      inpBits = 8,
+      wgtBits = 8,
+      uopBits = 32,
+      accBits = 32,
+      outBits = 8,
+      uopMemDepth = 2048,
+      inpMemDepth = 2048,
+      wgtMemDepth = 1024,
+      accMemDepth = 2048,
+      outMemDepth = 2048,
+      instQueueEntries = 512
+    )
+})
+
+class CoreConfig_8x16 extends Config((site, here, up) => {
+  case CoreKey =>
+    CoreParams(
+      batch = 8,
+      blockOut = 16,
+      blockOutFactor = 1,
+      blockIn = 16,
+      inpBits = 8,
+      wgtBits = 8,
+      uopBits = 32,
+      accBits = 32,
+      outBits = 8,
+      uopMemDepth = 2048,
+      inpMemDepth = 2048,
+      wgtMemDepth = 1024,
+      accMemDepth = 2048,
+      outMemDepth = 2048,
+      instQueueEntries = 512
+    )
+})
+
+class CoreConfig_1x32 extends Config((site, here, up) => {
+  case CoreKey =>
+    CoreParams(
+      batch = 1,
+      blockOut = 32,
+      blockOutFactor = 1,
+      blockIn = 32,
+      inpBits = 8,
+      wgtBits = 8,
+      uopBits = 32,
+      accBits = 32,
+      outBits = 8,
+      uopMemDepth = 2048,
+      inpMemDepth = 2048,
+      wgtMemDepth = 1024,
+      accMemDepth = 2048,
+      outMemDepth = 2048,
+      instQueueEntries = 512
+    )
+})
+
+class CoreConfig_4x32 extends Config((site, here, up) => {
+  case CoreKey =>
+    CoreParams(
+      batch = 4,
+      blockOut = 32,
+      blockOutFactor = 1,
+      blockIn = 32,
+      inpBits = 8,
+      wgtBits = 8,
+      uopBits = 32,
+      accBits = 32,
+      outBits = 8,
+      uopMemDepth = 2048,
+      inpMemDepth = 2048,
+      wgtMemDepth = 1024,
+      accMemDepth = 2048,
+      outMemDepth = 2048,
+      instQueueEntries = 512
+    )
+})
+
+class CoreConfig_8x32 extends Config((site, here, up) => {
+  case CoreKey =>
+    CoreParams(
+      batch = 8,
+      blockOut = 32,
+      blockOutFactor = 1,
+      blockIn = 32,
       inpBits = 8,
       wgtBits = 8,
       uopBits = 32,
