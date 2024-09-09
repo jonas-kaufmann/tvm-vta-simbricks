@@ -236,7 +236,9 @@ conda/pkg
 *.interp
 tvm/
 
-simbricks/obj_dir/
+simbricks/obj_dir
+simbricks/obj_dir-*
 simbricks/vta_simbricks
+simbricks/vta_simbricks-*
 hardware/chisel/project/project/
 ready
