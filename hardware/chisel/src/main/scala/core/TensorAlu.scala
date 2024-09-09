@@ -83,6 +83,8 @@ class AluVector(implicit p: Parameters) extends Module {
   val blockOut = p(CoreKey).blockOut
   val f = Seq.fill(blockOut)(Module(new AluReg))
   val valid = Wire(Vec(blockOut, Bool()))
+  io.out.data.bits := DontCare
+  io.acc_y.data.bits := DontCare
   for (i <- 0 until blockOut) {
     f(i).io.opcode := io.opcode
     f(i).io.a.valid := io.acc_a.data.valid
