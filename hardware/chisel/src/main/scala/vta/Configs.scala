@@ -35,11 +35,11 @@ class DefaultPynqConfig extends Config(new CoreConfig_1x16 ++ new PynqConfig)
 class DefaultF1Config extends Config(new CoreConfig_1x16 ++ new F1Config)
 class DefaultDe10Config extends Config(new CoreConfig_1x16 ++ new De10Config)
 class DefaultVTAConfig_1x16 extends Config(new CoreConfig_1x16 ++ new VTAConfig)
+class DefaultVTAConfig_2x16 extends Config(new CoreConfig_2x16 ++ new VTAConfig)
 class DefaultVTAConfig_4x16 extends Config(new CoreConfig_4x16 ++ new VTAConfig)
-class DefaultVTAConfig_8x16 extends Config(new CoreConfig_8x16 ++ new VTAConfig)
 class DefaultVTAConfig_1x32 extends Config(new CoreConfig_1x32 ++ new VTAConfig)
+class DefaultVTAConfig_2x32 extends Config(new CoreConfig_2x32 ++ new VTAConfig)
 class DefaultVTAConfig_4x32 extends Config(new CoreConfig_4x32 ++ new VTAConfig)
-class DefaultVTAConfig_8x32 extends Config(new CoreConfig_8x32 ++ new VTAConfig)
 
 object DefaultPynqConfig extends App {
   implicit val p: Parameters = new DefaultPynqConfig
@@ -61,13 +61,13 @@ object DefaultVTAConfig_1x16 extends App {
   (new chisel3.stage.ChiselStage).emitSystemVerilog(new VTAShell, args)
 }
 
-object DefaultVTAConfig_4x16 extends App {
-  implicit val p: Parameters = new DefaultVTAConfig_4x16
+object DefaultVTAConfig_2x16 extends App {
+  implicit val p: Parameters = new DefaultVTAConfig_2x16
   (new chisel3.stage.ChiselStage).emitSystemVerilog(new VTAShell, args)
 }
 
-object DefaultVTAConfig_8x16 extends App {
-  implicit val p: Parameters = new DefaultVTAConfig_8x16
+object DefaultVTAConfig_4x16 extends App {
+  implicit val p: Parameters = new DefaultVTAConfig_4x16
   (new chisel3.stage.ChiselStage).emitSystemVerilog(new VTAShell, args)
 }
 
@@ -76,13 +76,13 @@ object DefaultVTAConfig_1x32 extends App {
   (new chisel3.stage.ChiselStage).emitSystemVerilog(new VTAShell, args)
 }
 
-object DefaultVTAConfig_4x32 extends App {
-  implicit val p: Parameters = new DefaultVTAConfig_4x32
+object DefaultVTAConfig_2x32 extends App {
+  implicit val p: Parameters = new DefaultVTAConfig_2x32
   (new chisel3.stage.ChiselStage).emitSystemVerilog(new VTAShell, args)
 }
 
-object DefaultVTAConfig_8x32 extends App {
-  implicit val p: Parameters = new DefaultVTAConfig_8x32
+object DefaultVTAConfig_4x32 extends App {
+  implicit val p: Parameters = new DefaultVTAConfig_4x32
   (new chisel3.stage.ChiselStage).emitSystemVerilog(new VTAShell, args)
 }
 

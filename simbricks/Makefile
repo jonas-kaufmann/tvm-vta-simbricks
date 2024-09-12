@@ -19,28 +19,37 @@ VFLAGS += --output-split 20000
 VFLAGS += --output-split-cfuncs 20000
 CHISEL_BUILD_DIR := $(abspath ../build/chisel/)
 
-all: vta_simbricks-1x16 vta_simbricks-4x16 vta_simbricks-8x16 \
-	vta_simbricks-1x32 vta_simbricks-4x32 vta_simbricks-8x32
+all: vta_simbricks-1x16 vta_simbricks-2x16 vta_simbricks-4x16 \
+	vta_simbricks-1x32 vta_simbricks-2x32 vta_simbricks-4x32
 
 $(vsrc_dir)/VTA.DefaultVTAConfig_1x16.sv:
 	$(MAKE) -C ../hardware/chisel/ verilog CONFIG=DefaultVTAConfig_1x16
 
+$(vsrc_dir)/VTA.DefaultVTAConfig_2x16.sv:
+	$(MAKE) -C ../hardware/chisel/ verilog CONFIG=DefaultVTAConfig_2x16
+
 $(vsrc_dir)/VTA.DefaultVTAConfig_4x16.sv:
 	$(MAKE) -C ../hardware/chisel/ verilog CONFIG=DefaultVTAConfig_4x16
-
-$(vsrc_dir)/VTA.DefaultVTAConfig_8x16.sv:
-	$(MAKE) -C ../hardware/chisel/ verilog CONFIG=DefaultVTAConfig_8x16
 
 $(vsrc_dir)/VTA.DefaultVTAConfig_1x32.sv:
 	JAVA_OPTS="-Xmx4g" $(MAKE) -C ../hardware/chisel/ verilog CONFIG=DefaultVTAConfig_1x32
 
+$(vsrc_dir)/VTA.DefaultVTAConfig_2x32.sv:
+	JAVA_OPTS="-Xmx4g" $(MAKE) -C ../hardware/chisel/ verilog CONFIG=DefaultVTAConfig_2x32
+
 $(vsrc_dir)/VTA.DefaultVTAConfig_4x32.sv:
 	JAVA_OPTS="-Xmx4g" $(MAKE) -C ../hardware/chisel/ verilog CONFIG=DefaultVTAConfig_4x32
 
-$(vsrc_dir)/VTA.DefaultVTAConfig_8x32.sv:
-	JAVA_OPTS="-Xmx4g" $(MAKE) -C ../hardware/chisel/ verilog CONFIG=DefaultVTAConfig_8x32
-
 obj_dir-1x16/$(verilator_src): $(vsrc_dir)/VTA.DefaultVTAConfig_1x16.sv
+	$(VERILATOR) $(VFLAGS) \
+	    -CFLAGS "$(CFLAGS)" \
+	    --top-module VTAShell \
+	    --Mdir $(dir $@) \
+	    -LDFLAGS "$(LDFLAGS) -lnicif -lsimbricks" \
+		"-I$(CHISEL_BUILD_DIR)" \
+	    $< --exe $(abspath $(srcs))
+
+obj_dir-2x16/$(verilator_src): $(vsrc_dir)/VTA.DefaultVTAConfig_2x16.sv
 	$(VERILATOR) $(VFLAGS) \
 	    -CFLAGS "$(CFLAGS)" \
 	    --top-module VTAShell \
@@ -58,7 +67,7 @@ obj_dir-4x16/$(verilator_src): $(vsrc_dir)/VTA.DefaultVTAConfig_4x16.sv
 		"-I$(CHISEL_BUILD_DIR)" \
 	    $< --exe $(abspath $(srcs))
 
-obj_dir-8x16/$(verilator_src): $(vsrc_dir)/VTA.DefaultVTAConfig_8x16.sv
+obj_dir-1x32/$(verilator_src): $(vsrc_dir)/VTA.DefaultVTAConfig_1x32.sv
 	$(VERILATOR) $(VFLAGS) \
 	    -CFLAGS "$(CFLAGS)" \
 	    --top-module VTAShell \
@@ -67,7 +76,7 @@ obj_dir-8x16/$(verilator_src): $(vsrc_dir)/VTA.DefaultVTAConfig_8x16.sv
 		"-I$(CHISEL_BUILD_DIR)" \
 	    $< --exe $(abspath $(srcs))
 
-obj_dir-1x32/$(verilator_src): $(vsrc_dir)/VTA.DefaultVTAConfig_1x32.sv
+obj_dir-2x32/$(verilator_src): $(vsrc_dir)/VTA.DefaultVTAConfig_2x32.sv
 	$(VERILATOR) $(VFLAGS) \
 	    -CFLAGS "$(CFLAGS)" \
 	    --top-module VTAShell \
@@ -85,16 +94,11 @@ obj_dir-4x32/$(verilator_src): $(vsrc_dir)/VTA.DefaultVTAConfig_4x32.sv
 		"-I$(CHISEL_BUILD_DIR)" \
 	    $< --exe $(abspath $(srcs))
 
-obj_dir-8x32/$(verilator_src): $(vsrc_dir)/VTA.DefaultVTAConfig_8x32.sv
-	$(VERILATOR) $(VFLAGS) \
-	    -CFLAGS "$(CFLAGS)" \
-	    --top-module VTAShell \
-	    --Mdir $(dir $@) \
-	    -LDFLAGS "$(LDFLAGS) -lnicif -lsimbricks" \
-		"-I$(CHISEL_BUILD_DIR)" \
-	    $< --exe $(abspath $(srcs))
-
 vta_simbricks-1x16: obj_dir-1x16/$(verilator_src) $(srcs)
+	$(MAKE) -C $(dir $<) -f VVTAShell.mk
+	cp $(dir $<)/VVTAShell $@
+
+vta_simbricks-2x16: obj_dir-2x16/$(verilator_src) $(srcs)
 	$(MAKE) -C $(dir $<) -f VVTAShell.mk
 	cp $(dir $<)/VVTAShell $@
 
@@ -102,11 +106,11 @@ vta_simbricks-4x16: obj_dir-4x16/$(verilator_src) $(srcs)
 	$(MAKE) -C $(dir $<) -f VVTAShell.mk
 	cp $(dir $<)/VVTAShell $@
 
-vta_simbricks-8x16: obj_dir-8x16/$(verilator_src) $(srcs)
+vta_simbricks-1x32: obj_dir-1x32/$(verilator_src) $(srcs)
 	$(MAKE) -C $(dir $<) -f VVTAShell.mk
 	cp $(dir $<)/VVTAShell $@
 
-vta_simbricks-1x32: obj_dir-1x32/$(verilator_src) $(srcs)
+vta_simbricks-2x32: obj_dir-2x32/$(verilator_src) $(srcs)
 	$(MAKE) -C $(dir $<) -f VVTAShell.mk
 	cp $(dir $<)/VVTAShell $@
 
@@ -114,11 +118,6 @@ vta_simbricks-4x32: obj_dir-4x32/$(verilator_src) $(srcs)
 	$(MAKE) -C $(dir $<) -f VVTAShell.mk
 	cp $(dir $<)/VVTAShell $@
 
-vta_simbricks-8x32: obj_dir-8x32/$(verilator_src) $(srcs)
-	$(MAKE) -C $(dir $<) -f VVTAShell.mk
-	cp $(dir $<)/VVTAShell $@
-
 clean:
-	rm -rf obj_dir-1x16 obj_dir-4x16 obj_dir-8x16 obj_dir-1x32 obj_dir-4x32 \
-		obj_dir-8x32 ../build
+	rm -rf obj_dir-* vta_simbricks-*  ../build
 .PHONY: all clean
