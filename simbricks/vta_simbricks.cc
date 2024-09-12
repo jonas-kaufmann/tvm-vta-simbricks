@@ -254,6 +254,7 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
   int sync_pci = SimbricksBaseIfSyncEnabled(&nicif.pcie.base);
+  std::cout << "vta_simbricks sync_pci=" << sync_pci << std::endl;
 
   signal(SIGINT, sigint_handler);
   signal(SIGUSR1, sigusr1_handler);
