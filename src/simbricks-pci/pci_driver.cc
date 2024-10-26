@@ -54,7 +54,7 @@ static void alloc_init()
     return;
 
   std::cerr << "simbricks-pci: initializing allocator" << std::endl;
-  int fd = open("/dev/mem", O_RDWR | O_SYNC);
+  int fd = open("/dev/mem", O_RDWR);
   if (fd < 0) {
     std::cerr << "opening devmem failed" << std::endl;
     abort();
