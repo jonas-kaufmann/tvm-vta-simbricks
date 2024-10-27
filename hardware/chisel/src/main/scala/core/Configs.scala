@@ -51,7 +51,7 @@ class CoreConfig_1x16 extends Config((site, here, up) => {
 class CoreConfig_2x16 extends Config((site, here, up) => {
   case CoreKey =>
     CoreParams(
-      batch = 4,
+      batch = 2,
       blockOut = 16,
       blockOutFactor = 1,
       blockIn = 16,
@@ -72,7 +72,7 @@ class CoreConfig_2x16 extends Config((site, here, up) => {
 class CoreConfig_4x16 extends Config((site, here, up) => {
   case CoreKey =>
     CoreParams(
-      batch = 8,
+      batch = 4,
       blockOut = 16,
       blockOutFactor = 1,
       blockIn = 16,
@@ -114,7 +114,7 @@ class CoreConfig_1x32 extends Config((site, here, up) => {
 class CoreConfig_2x32 extends Config((site, here, up) => {
   case CoreKey =>
     CoreParams(
-      batch = 4,
+      batch = 2,
       blockOut = 32,
       blockOutFactor = 1,
       blockIn = 32,
@@ -135,7 +135,7 @@ class CoreConfig_2x32 extends Config((site, here, up) => {
 class CoreConfig_4x32 extends Config((site, here, up) => {
   case CoreKey =>
     CoreParams(
-      batch = 8,
+      batch = 4,
       blockOut = 32,
       blockOutFactor = 1,
       blockIn = 32,
