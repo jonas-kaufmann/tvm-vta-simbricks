@@ -20,6 +20,7 @@
  * \brief VTA driver for SimBricks simulated PCI boards support.
  */
 
+#include <chrono>
 #include <vta/driver.h>
 #include <cstdlib>
 #include <thread>
@@ -178,7 +179,7 @@ class VTADevice {
       flag = VTAReadMappedReg(vta_host_handle_, 0x00);
       flag &= 0x2;
       if (flag == 0x2) break;
-      std::this_thread::yield();
+      std::this_thread::sleep_for(std::chrono::microseconds(100));
     }
     // Report error if timeout
     return t < wait_cycles ? 0 : 1;
