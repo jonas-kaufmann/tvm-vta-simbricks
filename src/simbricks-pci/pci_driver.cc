@@ -35,7 +35,12 @@
 #include "pci_driver.h"
 #include "vfio.h"
 
+#define SIM_CTRL 1
+
 static void *reg_bar = nullptr;
+#if SIM_CTRL
+static void *sim_ctrl_bar = nullptr;
+#endif
 static int vfio_fd = -1;
 
 static void *alloc_base = nullptr;
@@ -126,6 +131,15 @@ void *VTAMapRegister(uint32_t addr) {
       abort();
     }
 
+    #if SIM_CTRL
+    reg_len = 0;
+    if (vfio_map_region(vfio_fd, 1, &sim_ctrl_bar, &reg_len)) {
+      std::cerr << "vfio map region failed for simulation control bar failed"
+                << std::endl;
+      abort();
+    }
+    #endif
+
     if (vfio_busmaster_enable(vfio_fd)) {
       std::cerr << "vfio busmaster enable failed" << std::endl;
       abort();
@@ -165,6 +179,9 @@ class VTADevice {
   int Run(vta_phy_addr_t insn_phy_addr,
           uint32_t insn_count,
           uint32_t wait_cycles) {
+    #if SIM_CTRL
+    VTAWriteMappedReg(sim_ctrl_bar, 0, 1);
+    #endif
     VTAWriteMappedReg(vta_host_handle_, 0x04, 0);
     VTAWriteMappedReg(vta_host_handle_, 0x08, insn_count);
     VTAWriteMappedReg(vta_host_handle_, 0x0c, insn_phy_addr);
@@ -181,6 +198,11 @@ class VTADevice {
       if (flag == 0x2) break;
       std::this_thread::sleep_for(std::chrono::microseconds(100));
     }
+
+    #if SIM_CTRL
+    VTAWriteMappedReg(sim_ctrl_bar, 0, 0);
+    #endif
+    
     // Report error if timeout
     return t < wait_cycles ? 0 : 1;
   }
