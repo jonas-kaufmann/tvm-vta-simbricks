@@ -22,9 +22,12 @@
 
 #include <chrono>
 #include <vta/driver.h>
+#include <cstdint>
 #include <cstdlib>
 #include <thread>
 #include <iostream>
+#include <unordered_map>
+#include <utility>
 #include <time.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -35,6 +38,10 @@
 #include "pci_driver.h"
 #include "vfio.h"
 
+extern "C" {
+#include <contiguousMalloc.h>
+}
+
 #define SIM_CTRL 1
 
 static void *reg_bar = nullptr;
@@ -42,53 +49,26 @@ static void *reg_bar = nullptr;
 static void *sim_ctrl_bar = nullptr;
 #endif
 static int vfio_fd = -1;
-
-static void *alloc_base = nullptr;
-static uint64_t alloc_phys_base = 1ULL * 1024 * 1024 * 1024;
-static size_t alloc_size = 512 * 1024 * 1024;
-static size_t alloc_off = 0;
-
-static void alloc_init()
-{
-  if (alloc_base)
-    return;
-
-  std::cerr << "simbricks-pci: initializing allocator" << std::endl;
-  int fd = open("/dev/mem", O_RDWR);
-  if (fd < 0) {
-    std::cerr << "opening devmem failed" << std::endl;
-    abort();
-  }
-
-  void *mem = mmap(NULL, alloc_size, PROT_READ | PROT_WRITE, MAP_SHARED,
-			fd, alloc_phys_base);
-  if (mem == MAP_FAILED) {
-    std::cerr << "mmap devmem failed" << std::endl;
-    abort();
-  }
-  alloc_base = mem;
-
-  std::cerr << "simbricks-pci: allocator initialized" << std::endl;
-}
+static std::unordered_map<void *, std::pair<size_t, uintptr_t>> cma_map{};
 
 void* VTAMemAlloc(size_t size, int cached) {
-  //std::cerr << "simbricks-pci: VTAMemAlloc(" << size << ")" << std::endl;
-  alloc_init();
-
-  assert (alloc_off + size <= alloc_size);
-  void *addr = (void *) ((uint8_t *) alloc_base + alloc_off);
-  alloc_off += size;
-  //std::cerr << "simbricks-pci:    = " << addr << std::endl;
+  std::cout << __func__ << "(size=" << size << ")" << std::endl;
+  uintptr_t phys_addr;
+  void *addr = mallocContiguous(size, &phys_addr);
+  cma_map.emplace(addr, std::make_pair(size, phys_addr));
   return addr;
 }
 
 void VTAMemFree(void* buf) {
-  //std::cerr << "simbricks-pci: VTAMemFree(" << buf << ")" << std::endl;
-  // TODO
+  std::cout << __func__ << "(buf=" << buf << ")" << std::endl;
+  auto size_phys_addr = cma_map.at(buf);
+  freeContiguous(size_phys_addr.second, buf, size_phys_addr.first);
+  cma_map.erase(buf);
+
 }
 
 vta_phy_addr_t VTAMemGetPhyAddr(void* buf) {
-  return alloc_phys_base + ((uintptr_t) buf - (uintptr_t) alloc_base);
+  return cma_map.at(buf).second;
 }
 
 void VTAMemCopyFromHost(void* dst, const void* src, size_t size) {

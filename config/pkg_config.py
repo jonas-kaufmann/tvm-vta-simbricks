@@ -102,9 +102,12 @@ class PkgConfig(object):
             ]
         elif self.TARGET in ["simbricks-pci"]:
             self.lib_source += glob.glob("%s/src/simbricks-pci/*.cc" % vta_hw_path)
+            self.lib_source += glob.glob(f"{tvm_path}/3rdparty/cma_malloc/userspace/src/*.c")
             self.include_path += [
                 "-I%s/src/simbricks-pci" % vta_hw_path,
-                "-I%s/3rdparty" % tvm_path
+                "-I%s/3rdparty" % tvm_path,
+                f"-I{tvm_path}/3rdparty/cma_malloc",
+                f"-I{tvm_path}/3rdparty/cma_malloc/userspace/inc"
             ]
         # Linker flags
         if self.TARGET in ["pynq", "ultra96", "zcu104"]:
