@@ -20,34 +20,37 @@
  * \brief VTA driver for SimBricks simulated PCI boards support.
  */
 
-#include <chrono>
+#include "pci_driver.h"
+
+#include <fcntl.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <time.h>
 #include <vta/driver.h>
+
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
-#include <thread>
 #include <iostream>
+#include <thread>
 #include <unordered_map>
 #include <utility>
-#include <time.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <sys/mman.h>
-#include <string.h>
-#include <stdlib.h>
-#include "pci_driver.h"
+
 #include "vfio.h"
 
 extern "C" {
 #include <contiguousMalloc.h>
 }
 
-static void *reg_bar = nullptr;
+static void* reg_bar = nullptr;
 #if SIM_CTRL
-static void *sim_ctrl_bar = nullptr;
+static void* sim_ctrl_bar = nullptr;
 #endif
 static int vfio_fd = -1;
-static std::unordered_map<void *, std::pair<size_t, uintptr_t>> cma_map{};
+static std::unordered_map<void*, std::pair<size_t, uintptr_t>> cma_map{};
 static std::chrono::steady_clock::time_point begin;
 static std::chrono::steady_clock::time_point end;
 static bool running = false;
@@ -60,7 +63,7 @@ void* VTAMemAlloc(size_t size, int cached) {
     size = size + 4096 - remainder;
   }
   uintptr_t phys_addr;
-  void *addr = mallocContiguous(size, &phys_addr);
+  void* addr = mallocContiguous(size, &phys_addr);
   cma_map.emplace(addr, std::make_pair(size, phys_addr));
   return addr;
 }
@@ -70,12 +73,9 @@ void VTAMemFree(void* buf) {
   auto size_phys_addr = cma_map.at(buf);
   freeContiguous(size_phys_addr.second, buf, size_phys_addr.first);
   cma_map.erase(buf);
-
 }
 
-vta_phy_addr_t VTAMemGetPhyAddr(void* buf) {
-  return cma_map.at(buf).second;
-}
+vta_phy_addr_t VTAMemGetPhyAddr(void* buf) { return cma_map.at(buf).second; }
 
 void VTAMemCopyFromHost(void* dst, const void* src, size_t size) {
   // For SoC-based FPGAs that used shared memory with the CPU, use memcopy()
@@ -90,19 +90,19 @@ void VTAMemCopyToHost(void* dst, const void* src, size_t size) {
 void VTAFlushCache(void* vir_addr, vta_phy_addr_t phy_addr, int size) {
   // Call the cma_flush_cache on the CMA buffer
   // so that the FPGA can read the buffer data.
-  //cma_flush_cache(vir_addr, phy_addr, size);
+  // cma_flush_cache(vir_addr, phy_addr, size);
 }
 
 void VTAInvalidateCache(void* vir_addr, vta_phy_addr_t phy_addr, int size) {
   // Call the cma_invalidate_cache on the CMA buffer
   // so that the host needs to read the buffer data.
-  //cma_invalidate_cache(vir_addr, phy_addr, size);
+  // cma_invalidate_cache(vir_addr, phy_addr, size);
 }
 
-void *VTAMapRegister(uint32_t addr) {
+void* VTAMapRegister(uint32_t addr) {
   if (!reg_bar) {
 #if !ULTRA96V2
-    char *device = std::getenv("VTA_DEVICE");
+    char* device = std::getenv("VTA_DEVICE");
     if (device == nullptr) {
       std::cerr << "VTA_DEVICE is not set" << std::endl;
       abort();
@@ -141,29 +141,28 @@ void *VTAMapRegister(uint32_t addr) {
 #if SIM_CTRL
     reg_len = 0;
     if (vfio_map_region(vfio_fd, 1, &sim_ctrl_bar, &reg_len)) {
-      std::cerr << "vfio map region failed for simulation control bar failed"
-                << std::endl;
+      std::cerr << "vfio map region failed for simulation control bar failed" << std::endl;
       abort();
     }
 #endif
 
-    //std::cerr << "vfio registers mapped (len = " << reg_len << ")" << std::endl;
+    // std::cerr << "vfio registers mapped (len = " << reg_len << ")" << std::endl;
   }
 
-  return (uint8_t *) reg_bar + addr;
+  return (uint8_t*)reg_bar + addr;
 }
 
-void VTAUnmapRegister(void *vta) {
+void VTAUnmapRegister(void* vta) {
   // Unmap memory
   // TODO
 }
 
 void VTAWriteMappedReg(void* base_addr, uint32_t offset, uint32_t val) {
-  *((volatile uint32_t *) (reinterpret_cast<char *>(base_addr) + offset)) = val;
+  *((volatile uint32_t*)(reinterpret_cast<char*>(base_addr) + offset)) = val;
 }
 
 uint32_t VTAReadMappedReg(void* base_addr, uint32_t offset) {
-  return *((volatile uint32_t *) (reinterpret_cast<char *>(base_addr) + offset));
+  return *((volatile uint32_t*)(reinterpret_cast<char*>(base_addr) + offset));
 }
 
 class VTADevice {
@@ -212,27 +211,21 @@ class VTADevice {
   void* vta_host_handle_{nullptr};
 };
 
-VTADeviceHandle VTADeviceAlloc() {
-  return new VTADevice();
-}
+VTADeviceHandle VTADeviceAlloc() { return new VTADevice(); }
 
 void VTADeviceFree(VTADeviceHandle handle) {
 #if SIM_CTRL
-    VTAWriteMappedReg(sim_ctrl_bar, 0, 0);
+  VTAWriteMappedReg(sim_ctrl_bar, 0, 0);
 #endif
   end = std::chrono::steady_clock::now();
   running = false;
   std::cout << "Accelerator latency "
-              << std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()
-              << " ns\n";
+            << std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count() << " ns\n";
   std::cout << __func__ << "(" << handle << ")\n";
   delete static_cast<VTADevice*>(handle);
 }
 
-int VTADeviceRun(VTADeviceHandle handle,
-                 vta_phy_addr_t insn_phy_addr,
-                 uint32_t insn_count,
+int VTADeviceRun(VTADeviceHandle handle, vta_phy_addr_t insn_phy_addr, uint32_t insn_count,
                  uint32_t wait_cycles) {
-  return static_cast<VTADevice*>(handle)->Run(
-      insn_phy_addr, insn_count, wait_cycles);
+  return static_cast<VTADevice*>(handle)->Run(insn_phy_addr, insn_count, wait_cycles);
 }
