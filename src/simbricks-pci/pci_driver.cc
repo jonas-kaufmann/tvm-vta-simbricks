@@ -100,6 +100,7 @@ void VTAInvalidateCache(void* vir_addr, vta_phy_addr_t phy_addr, int size) {
 
 void *VTAMapRegister(uint32_t addr) {
   if (!reg_bar) {
+#if !ULTRA96V2
     char *device = std::getenv("VTA_DEVICE");
     if (device == nullptr) {
       std::cerr << "VTA_DEVICE is not set" << std::endl;
@@ -116,19 +117,34 @@ void *VTAMapRegister(uint32_t addr) {
       abort();
     }
 
-    #if SIM_CTRL
+    if (vfio_busmaster_enable(vfio_fd)) {
+      std::cerr << "vfio busmaster enable failed" << std::endl;
+      abort();
+    }
+#else
+    int fd = open("/dev/mem", O_RDWR | O_SYNC);
+    if (fd < 0) {
+      std::cerr << "opening devmem failed" << std::endl;
+      abort();
+    }
+
+    size_t alloc_size = 4 * 1024;
+    off_t alloc_phys_base = 0xA0000000;
+    reg_bar = mmap(NULL, alloc_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, alloc_phys_base);
+    if (reg_bar == MAP_FAILED) {
+      std::cerr << "mmap devmem failed" << std::endl;
+      abort();
+    }
+#endif
+
+#if SIM_CTRL
     reg_len = 0;
     if (vfio_map_region(vfio_fd, 1, &sim_ctrl_bar, &reg_len)) {
       std::cerr << "vfio map region failed for simulation control bar failed"
                 << std::endl;
       abort();
     }
-    #endif
-
-    if (vfio_busmaster_enable(vfio_fd)) {
-      std::cerr << "vfio busmaster enable failed" << std::endl;
-      abort();
-    }
+#endif
 
     //std::cerr << "vfio registers mapped (len = " << reg_len << ")" << std::endl;
   }
