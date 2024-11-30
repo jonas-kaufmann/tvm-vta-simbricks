@@ -42,14 +42,15 @@ extern "C" {
 #include <contiguousMalloc.h>
 }
 
-#define SIM_CTRL 1
-
 static void *reg_bar = nullptr;
 #if SIM_CTRL
 static void *sim_ctrl_bar = nullptr;
 #endif
 static int vfio_fd = -1;
 static std::unordered_map<void *, std::pair<size_t, uintptr_t>> cma_map{};
+static std::chrono::steady_clock::time_point begin;
+static std::chrono::steady_clock::time_point end;
+static bool running = false;
 
 void* VTAMemAlloc(size_t size, int cached) {
   std::cout << __func__ << "(size=" << size << ")" << std::endl;
@@ -177,12 +178,14 @@ class VTADevice {
     VTAUnmapRegister(vta_host_handle_);
   }
 
-  int Run(vta_phy_addr_t insn_phy_addr,
-          uint32_t insn_count,
-          uint32_t wait_cycles) {
-    #if SIM_CTRL
-    VTAWriteMappedReg(sim_ctrl_bar, 0, 1);
-    #endif
+  int Run(vta_phy_addr_t insn_phy_addr, uint32_t insn_count, uint32_t wait_cycles) {
+    if (!running) {
+      begin = std::chrono::steady_clock::now();
+      running = true;
+#if SIM_CTRL
+      VTAWriteMappedReg(sim_ctrl_bar, 0, 1);
+#endif
+    }
     VTAWriteMappedReg(vta_host_handle_, 0x04, 0);
     VTAWriteMappedReg(vta_host_handle_, 0x08, insn_count);
     VTAWriteMappedReg(vta_host_handle_, 0x0c, insn_phy_addr);
@@ -200,10 +203,6 @@ class VTADevice {
       std::this_thread::sleep_for(std::chrono::microseconds(100));
     }
 
-    #if SIM_CTRL
-    VTAWriteMappedReg(sim_ctrl_bar, 0, 0);
-    #endif
-    
     // Report error if timeout
     return t < wait_cycles ? 0 : 1;
   }
@@ -218,6 +217,15 @@ VTADeviceHandle VTADeviceAlloc() {
 }
 
 void VTADeviceFree(VTADeviceHandle handle) {
+#if SIM_CTRL
+    VTAWriteMappedReg(sim_ctrl_bar, 0, 0);
+#endif
+  end = std::chrono::steady_clock::now();
+  running = false;
+  std::cout << "Accelerator latency "
+              << std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()
+              << " ns\n";
+  std::cout << __func__ << "(" << handle << ")\n";
   delete static_cast<VTADevice*>(handle);
 }
 
