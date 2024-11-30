@@ -53,6 +53,11 @@ static std::unordered_map<void *, std::pair<size_t, uintptr_t>> cma_map{};
 
 void* VTAMemAlloc(size_t size, int cached) {
   std::cout << __func__ << "(size=" << size << ")" << std::endl;
+  // round up to next page size
+  size_t remainder = size % 4096;
+  if (remainder != 0) {
+    size = size + 4096 - remainder;
+  }
   uintptr_t phys_addr;
   void *addr = mallocContiguous(size, &phys_addr);
   cma_map.emplace(addr, std::make_pair(size, phys_addr));
