@@ -178,6 +178,7 @@ class VTADevice {
   }
 
   int Run(vta_phy_addr_t insn_phy_addr, uint32_t insn_count, uint32_t wait_cycles) {
+    std::cout << "VTADevice::" << __func__ << "()\n"; 
     if (!running) {
       begin = std::chrono::steady_clock::now();
       running = true;
