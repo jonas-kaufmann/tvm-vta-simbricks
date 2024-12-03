@@ -34,6 +34,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <iostream>
 #include <thread>
 #include <unordered_map>
@@ -170,6 +171,7 @@ class VTADevice {
   VTADevice() {
     // VTA stage handles
     vta_host_handle_ = VTAMapRegister(0);
+    dry_run_file_ = std::getenv("VTA_DRY_RUN_FILE");
   }
 
   ~VTADevice() {
@@ -178,7 +180,14 @@ class VTADevice {
   }
 
   int Run(vta_phy_addr_t insn_phy_addr, uint32_t insn_count, uint32_t wait_cycles) {
-    std::cout << "VTADevice::" << __func__ << "()\n"; 
+    // Skip invoking the accelerator if the VTA_DRY_RUN_FILE exists
+    if (dry_run_file_ != nullptr && std::filesystem::exists(dry_run_file_)) {
+      std::cout << "VTADevice::" << __func__ << "() dry run, skipping invoking the accelerator\n";
+      return 0;
+    }
+
+    std::cout << "VTADevice::" << __func__ << "() invoking the accelerator\n";
+
     if (!running) {
       begin = std::chrono::steady_clock::now();
       running = true;
@@ -210,6 +219,7 @@ class VTADevice {
  private:
   // VTA handles (register maps)
   void* vta_host_handle_{nullptr};
+  char* dry_run_file_{nullptr};
 };
 
 VTADeviceHandle VTADeviceAlloc() { return new VTADevice(); }
