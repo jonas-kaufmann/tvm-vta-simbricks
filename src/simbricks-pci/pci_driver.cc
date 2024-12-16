@@ -83,12 +83,20 @@ vta_phy_addr_t VTAMemGetPhyAddr(void* buf) { return cma_map.at(buf).second; }
 
 void VTAMemCopyFromHost(void* dst, const void* src, size_t size) {
   // For SoC-based FPGAs that used shared memory with the CPU, use memcopy()
+  auto begin = std::chrono::steady_clock::now();
   memcpy(dst, src, size);
+  auto duration = std::chrono::steady_clock::now() - begin;
+  std::cout << __func__ << "() duration="
+            << std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count() << " ns\n";
 }
 
 void VTAMemCopyToHost(void* dst, const void* src, size_t size) {
   // For SoC-based FPGAs that used shared memory with the CPU, use memcopy()
+  auto begin = std::chrono::steady_clock::now();
   memcpy(dst, src, size);
+  auto duration = std::chrono::steady_clock::now() - begin;
+  std::cout << __func__ << "() duration="
+            << std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count() << " ns\n";
 }
 
 void VTAFlushCache(void* vir_addr, vta_phy_addr_t phy_addr, int size) {
