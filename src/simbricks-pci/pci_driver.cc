@@ -201,6 +201,10 @@ class VTADevice {
 
     if (!running) {
       begin = std::chrono::steady_clock::now();
+      struct timespec milt;
+      clock_gettime(CLOCK_REALTIME, &milt);
+      int64_t millitime = milt.tv_sec * INT64_C(1000) + milt.tv_nsec / 1000000;
+      std::cout << "VTADevice::" << __func__ << "() start at " << millitime << "\n";
       running = true;
 #if SIM_CTRL
       VTAWriteMappedReg(sim_ctrl_bar, 0, 1);
@@ -244,6 +248,12 @@ void VTADeviceFree(VTADeviceHandle handle) {
   std::cout << "Accelerator latency "
             << std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count() << " ns\n";
   std::cout << __func__ << "(" << handle << ")\n";
+  
+  struct timespec milt;
+  clock_gettime(CLOCK_REALTIME, &milt);
+  int64_t millitime = milt.tv_sec * INT64_C(1000) + milt.tv_nsec / 1000000;
+  std::cout << "VTADevice::" << __func__ << "() stop at " << millitime << "\n";
+
   delete static_cast<VTADevice*>(handle);
 
   // Free allocated memory
