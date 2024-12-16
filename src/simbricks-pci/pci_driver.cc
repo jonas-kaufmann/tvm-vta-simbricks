@@ -70,9 +70,12 @@ void* VTAMemAlloc(size_t size, int cached) {
 }
 
 void VTAMemFree(void* buf) {
+  auto entry = cma_map.find(buf);
+  if (entry == cma_map.end()) {
+    return;
+  }
   std::cout << __func__ << "(buf=" << buf << ")" << std::endl;
-  auto size_phys_addr = cma_map.at(buf);
-  freeContiguous(size_phys_addr.second, buf, size_phys_addr.first);
+  freeContiguous(entry->second.second, buf, entry->second.first);
   cma_map.erase(buf);
 }
 
@@ -234,6 +237,12 @@ void VTADeviceFree(VTADeviceHandle handle) {
             << std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count() << " ns\n";
   std::cout << __func__ << "(" << handle << ")\n";
   delete static_cast<VTADevice*>(handle);
+
+  // Free allocated memory
+  for (auto& entry : cma_map) {
+    freeContiguous(entry.second.second, entry.first, entry.second.first);
+  }
+  cma_map.clear();
 }
 
 int VTADeviceRun(VTADeviceHandle handle, vta_phy_addr_t insn_phy_addr, uint32_t insn_count,
