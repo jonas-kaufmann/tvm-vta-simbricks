@@ -52,9 +52,9 @@ static void* sim_ctrl_bar = nullptr;
 #endif
 static int vfio_fd = -1;
 static std::unordered_map<void*, std::pair<size_t, uintptr_t>> cma_map{};
-static std::chrono::steady_clock::time_point begin;
-static std::chrono::steady_clock::time_point end;
 static bool running = false;
+static std::chrono::nanoseconds vta_total{0};
+static std::chrono::nanoseconds mem_copy_total{0};
 
 void* VTAMemAlloc(size_t size, int cached) {
   std::cout << __func__ << "(size=" << size << ")" << std::endl;
@@ -85,18 +85,14 @@ void VTAMemCopyFromHost(void* dst, const void* src, size_t size) {
   // For SoC-based FPGAs that used shared memory with the CPU, use memcopy()
   auto begin = std::chrono::steady_clock::now();
   memcpy(dst, src, size);
-  auto duration = std::chrono::steady_clock::now() - begin;
-  std::cout << __func__ << "() duration="
-            << std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count() << " ns\n";
+  mem_copy_total += std::chrono::steady_clock::now() - begin;
 }
 
 void VTAMemCopyToHost(void* dst, const void* src, size_t size) {
   // For SoC-based FPGAs that used shared memory with the CPU, use memcopy()
   auto begin = std::chrono::steady_clock::now();
   memcpy(dst, src, size);
-  auto duration = std::chrono::steady_clock::now() - begin;
-  std::cout << __func__ << "() duration="
-            << std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count() << " ns\n";
+  mem_copy_total += std::chrono::steady_clock::now() - begin;
 }
 
 void VTAFlushCache(void* vir_addr, vta_phy_addr_t phy_addr, int size) {
@@ -200,7 +196,6 @@ class VTADevice {
     std::cout << "VTADevice::" << __func__ << "() invoking the accelerator\n";
 
     if (!running) {
-      begin = std::chrono::steady_clock::now();
       struct timespec milt;
       clock_gettime(CLOCK_REALTIME, &milt);
       int64_t millitime = milt.tv_sec * INT64_C(1000) + milt.tv_nsec / 1000000;
@@ -210,6 +205,7 @@ class VTADevice {
       VTAWriteMappedReg(sim_ctrl_bar, 0, 1);
 #endif
     }
+    auto vta_begin = std::chrono::steady_clock::now();
     VTAWriteMappedReg(vta_host_handle_, 0x04, 0);
     VTAWriteMappedReg(vta_host_handle_, 0x08, insn_count);
     VTAWriteMappedReg(vta_host_handle_, 0x0c, insn_phy_addr);
@@ -226,6 +222,7 @@ class VTADevice {
       if (flag == 0x2) break;
       std::this_thread::sleep_for(std::chrono::microseconds(100));
     }
+    vta_total += std::chrono::steady_clock::now() - vta_begin;
 
     // Report error if timeout
     return t < wait_cycles ? 0 : 1;
@@ -243,12 +240,11 @@ void VTADeviceFree(VTADeviceHandle handle) {
 #if SIM_CTRL
   VTAWriteMappedReg(sim_ctrl_bar, 0, 0);
 #endif
-  end = std::chrono::steady_clock::now();
   running = false;
-  std::cout << "Accelerator latency "
-            << std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count() << " ns\n";
-  std::cout << __func__ << "(" << handle << ")\n";
-  
+  std::cout << "Total VTA latency " << vta_total.count() << " ns\n";
+  std::cout << "Total VTA memory copy latency " << mem_copy_total.count() << " ns\n";
+  vta_total = mem_copy_total = std::chrono::nanoseconds{0};
+
   struct timespec milt;
   clock_gettime(CLOCK_REALTIME, &milt);
   int64_t millitime = milt.tv_sec * INT64_C(1000) + milt.tv_nsec / 1000000;
