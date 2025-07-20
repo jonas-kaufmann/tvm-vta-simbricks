@@ -11,7 +11,8 @@ VERILATOR ?= verilator
 CFLAGS := -DVTA_SIMBRICKS -I$(abspath ../../../../lib) -Wall -O2 -fno-omit-frame-pointer
 CFLAGS += -std=c++17
 LDFLAGS := -L$(abspath ../../../../lib/simbricks/nicif) -L$(abspath ../../../../lib)
-VFLAGS := --cc -O3 --trace
+# VFLAGS := --cc -O3 --trace
+VFLAGS := --cc -O3
 VFLAGS += +define+RANDOMIZE_GARBAGE_ASSIGN
 VFLAGS += +define+RANDOMIZE_REG_INIT
 VFLAGS += +define+RANDOMIZE_MEM_INIT

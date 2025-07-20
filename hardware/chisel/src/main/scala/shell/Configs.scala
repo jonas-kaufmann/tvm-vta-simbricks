@@ -80,6 +80,28 @@ class De10Config extends Config((site, here, up) => {
 })
 
 /** VTAConfig. Shell configuration for the VTAShell */
+// class VTAConfig extends Config((site, here, up) => {
+//   case ShellKey =>
+//     ShellParams(
+//       hostParams =
+//         AXIParams(addrBits = 16, dataBits = 32, idBits = 8, lenBits = 4),
+//       memParams = AXIParams(coherent = false,
+//         addrBits = 64,
+//         dataBits = 64,
+//         lenBits = 8,
+//         userBits = 1),
+//       vcrParams = VCRParams(),
+//       vmeParams = VMEParams()
+//     )
+// })
+
+
+  // parameter integer  C_S_AXI_CONTROL_DATA_WIDTH = 32,
+  // parameter integer  C_S_AXI_CONTROL_ADDR_WIDTH = 6,
+  // parameter integer  C_M_AXI_GMEM_ID_WIDTH = 1,
+  // parameter integer  C_M_AXI_GMEM_ADDR_WIDTH = 64,
+  // parameter integer  C_M_AXI_GMEM_DATA_WIDTH = 32
+
 class VTAConfig extends Config((site, here, up) => {
   case ShellKey =>
     ShellParams(
@@ -94,3 +116,4 @@ class VTAConfig extends Config((site, here, up) => {
       vmeParams = VMEParams()
     )
 })
+

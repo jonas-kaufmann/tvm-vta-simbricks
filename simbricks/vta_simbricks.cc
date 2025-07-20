@@ -21,8 +21,11 @@
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
+#include <sys/types.h>
 // #define AXI_R_DEBUG
 // #define AXI_W_DEBUG
+// #define AXIL_R_DEBUG
+// #define AXIL_W_DEBUG
 
 #include <signal.h>
 #include <verilated.h>
@@ -32,7 +35,7 @@
 #include "VVTAShell.h"
 #include "simbricks/pcie/proto.h"
 
-#define TRACE_ENABLED
+// #define TRACE_ENABLED
 
 #include <cstdlib>
 #include <iostream>
@@ -289,7 +292,7 @@ int main(int argc, char *argv[]) {
 #endif
   }
   shell->reset = 0;
-
+  uint64_t last_time = 0;
   /* main simulation loop */
   while (!exiting) {
     int done;
@@ -312,6 +315,10 @@ int main(int argc, char *argv[]) {
     } while (!exiting && ((sync_pci && SimbricksPcieIfH2DInTimestamp(
                                            &nicif.pcie) <= main_time)));
 
+    if(main_time > last_time + 10000000000){
+      printf("main_time = %lums\n", main_time/10000000000);  
+      last_time = main_time;
+    }
     /* falling edge */
     shell->clock = 0;
     main_time += clock_period / 2;
