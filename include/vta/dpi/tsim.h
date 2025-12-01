@@ -116,6 +116,32 @@ TVM_DLL void VTADPIInit(VTAContextHandle handle,
 /*! \brief VTA hardware simulation thread */
 TVM_DLL int VTADPISim();
 
+TVM_DLL void VTASimDPI(dpi8_t* wait,
+               dpi8_t* exit);
+
+TVM_DLL void VTAHostDPI(dpi8_t* req_valid,
+                dpi8_t* req_opcode,
+                dpi8_t* req_addr,
+                dpi32_t* req_value,
+                dpi8_t req_deq,
+                dpi8_t resp_valid,
+                dpi32_t resp_value);
+
+TVM_DLL void VTAMemDPI(dpi8_t rd_req_valid,
+               dpi8_t rd_req_len,
+               dpi8_t rd_req_id,
+               dpi64_t rd_req_addr,
+               dpi8_t wr_req_valid,
+               dpi8_t wr_req_len,
+               dpi64_t wr_req_addr,
+               dpi8_t wr_valid,
+               const svOpenArrayHandle wr_value,
+               dpi64_t wr_strb,
+               dpi8_t* rd_valid,
+               dpi8_t* rd_id,
+               const svOpenArrayHandle  rd_value,
+               dpi8_t rd_ready);
+
 #ifdef __cplusplus
 }
 #endif
