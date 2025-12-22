@@ -188,7 +188,8 @@ class VTADevice {
 
   int Run(vta_phy_addr_t insn_phy_addr, uint32_t insn_count, uint32_t wait_cycles) {
     // Skip invoking the accelerator if the VTA_DRY_RUN_FILE exists
-    if (dry_run_file_ != nullptr && std::filesystem::exists(dry_run_file_)) {
+    struct stat buffer;
+    if (dry_run_file_ != nullptr && stat(dry_run_file_, &buffer) == 0) {
       std::cout << "VTADevice::" << __func__ << "() dry run, skipping invoking the accelerator\n";
       return 0;
     }
